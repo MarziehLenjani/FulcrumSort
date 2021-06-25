@@ -53,6 +53,10 @@ public:
 	CONF_NUMBER_OF_COMPUTE_SUBARRAY_PER_BANK_TYPE numComputeSubarrayInABank;
 	CONF_SIZE_OF_EACH_SUBARRAY_IN_BYTE_TYPE sizeOfEachSubarrayInByte;
 	CONF_ADDRESS_MAPPING_TYPE addressMapping;
+    CONF_NUMBER_OF_WORDS_IN_A_ROW_TYPE numberOfWordsInARow;
+    CONF_ROW_CYCLE_IN_SUB_CLOCK_CYCLE_TYPE rowCycleInSubClockCyle;
+
+
 
 
 	//--------------------------

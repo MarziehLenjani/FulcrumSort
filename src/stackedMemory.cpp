@@ -48,6 +48,103 @@ void stackedMemory::runOneSubClokCycle(){
 
 	}
 }
+bool stackedMemory::checkIfProcessHasEnd(){
+
+	for (ID_TYPE i=0;i<numLayers;i++){
+		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+				if(!layerVector[i]->bankVector[j]->computSubarrayVector[k]->endOfReadData){
+
+					return false;
+
+				}
+
+			}
+		}
+	}
+	return true;
+}
+bool stackedMemory::checkIfSubBlockLimitIsReached(){
+
+	for (ID_TYPE i=0;i<numLayers;i++){
+		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+				if(!layerVector[i]->bankVector[j]->computSubarrayVector[k]->subBlockLimitIsReached){
+
+					return true;
+
+				}
+
+			}
+		}
+	}
+	return false;
+}
+void stackedMemory::initializeSubarraysSelfindexes(){
+	FULCRU_WORD_TYPE tSelfIndex= (FULCRU_WORD_TYPE)0 ;
+	for (ID_TYPE i=0;i<numLayers;i++){
+		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+				layerVector[i]->bankVector[j]->computSubarrayVector[k]->SelfIndex=tSelfIndex;
+				tSelfIndex++;
+
+			}
+		}
+	}
+	return;
+
+}
+void stackedMemory::incrementSubarraysSelfindexes(){
+	FULCRU_WORD_TYPE tSelfIndex=0;
+	for (ID_TYPE i=0;i<numLayers;i++){
+		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+				tSelfIndex=layerVector[i]->bankVector[j]->computSubarrayVector[k]->SelfIndex;
+				tSelfIndex++;
+				if(tSelfIndex>totNumComputeSubarray){
+					tSelfIndex=0;
+				}
+				layerVector[i]->bankVector[j]->computSubarrayVector[k]->SelfIndex=tSelfIndex;
+
+			}
+		}
+	}
+	return;
+
+}
+void stackedMemory::sealAllSubBuckets(){
+	for (ID_TYPE i=0;i<numLayers;i++){
+		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+				//TODO: implement sealing write data
+			}
+		}
+	}
+	return;
+}
+void stackedMemory::openANewSubBucket(){
+	for (ID_TYPE i=0;i<numLayers;i++){
+		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+				layerVector[i]->bankVector[j]->computSubarrayVector[k]->openANewSubBucket();
+
+			}
+		}
+	}
+	return;
+}
+void stackedMemory::setMaskForBucketIDExtraction(FULCRU_WORD_TYPE maskForBucketExtaction, FULCRU_WORD_TYPE numberOfShiftsForBucketIDExtraction){
+	for (ID_TYPE i=0;i<numLayers;i++){
+		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+				layerVector[i]->bankVector[j]->computSubarrayVector[k]->setMaskForBucketIDExtraction(maskForBucketExtaction,numberOfShiftsForBucketIDExtraction);
+
+			}
+		}
+	}
+	return;
+}
+
 
 
 

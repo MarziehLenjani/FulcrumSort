@@ -11,11 +11,13 @@
 #include "configAndStats.hpp"
 
 
+
 class physicalComponent{
 
 public:
 	 ID_TYPE id;
-	 configAndStats * confObj;
+	 configAndStats * confObj=NULL;
+
 
 	 physicalComponent * firstDimOwner;
 	 physicalComponent * secondDimOwner;

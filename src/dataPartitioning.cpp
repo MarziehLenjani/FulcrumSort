@@ -5,10 +5,12 @@
  *      Author: marzieh
  */
 #include "dataPartitioning.hpp"
+#include "stackedMemory.hpp"
 #include  <boost/utility/binary.hpp>
 dataPartitioning::dataPartitioning(stackedMemory * l_stackObj, configAndStats * l_confObj){
 	stackObj=l_stackObj;
 	confObj=l_confObj;
+	l_stackObj->dataPartitioningObj=this;
 }
 
 ERROR_RETURN_TYPE dataPartitioning::globalAddressToLocalAddressTranslation(PHYSICAL_EXTERNAL_ADDRESS_TYPE address, ID_TYPE & stackId, ID_TYPE & layerId, ID_TYPE & bankId, ID_TYPE & computeSubarrayID){

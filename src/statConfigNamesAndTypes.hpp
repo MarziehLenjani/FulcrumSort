@@ -31,11 +31,17 @@
 #define CONF_ADDRESS_MAPPING_NAME "addressMapping"
 #define CONF_ADDRESS_MAPPING_TYPE std::string
 
+#define CONF_NUMBER_OF_WORDS_IN_A_ROW_TYPE int
+#define CONF_NUMBER_OF_WORDS_IN_A_ROW_NAME "numberOfWordsInARow"
+
+#define CONF_ROW_CYCLE_IN_SUB_CLOCK_CYCLE_TYPE int
+#define CONF_ROW_CYCLE_IN_SUB_CLOCK_CYCLE_NAME "rowCycleInSubClockCyle"
+
+
 enum addressMappingEnum{MLBS, MVLBS}; //the second one is memory, vault, layer, bank, subarray
 class mapStringToMappingEnum{
 public:
 	std::map<std::string, addressMappingEnum> xmap=  map_list_of("MLBS",MLBS)("MVLBS", MVLBS);
-
 
 };
 

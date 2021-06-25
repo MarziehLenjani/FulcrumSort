@@ -13,6 +13,7 @@ CXXFLAGS :=
 EXE_FILE_NAME ?= main.out
 EXE_COMMAND  ?= ./$(EXE_FILE_NAME)
 EXTRA_COMPILE_OPTIONS  ?=-DUSE_THE_MAIN_MAIN
+TST=0
 all: build
 
 testEcdcho:
@@ -28,10 +29,18 @@ loadModules:
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp loadModules
 	g++ $(CPPFLAGS)  $(CXXFLAGS) $(EXTRA_COMPILE_OPTIONS) $(CONFIGURATION_COMPILE_OPTIONS) -fmax-errors=5 -c -o $@ $<
 build: $(EXE_FILE_NAME)
-########################Main program
-run:compile	
-	$(EXE_COMMAND) $(COMMAND_LINE_OPTIONS)
+########################Main program 
+#to run any test type this 
+#make run TST=...
 
+#################
+run:compile	
+	$(EXE_COMMAND) $(COMMAND_LINE_OPTIONS) --testNumber=$(TST)
+	
+debug:compile # you need to type run 
+	gdb    --args $(EXE_FILE_NAME)   --testNumber=$(TST)
+	#gdb -batch -x /tmp/cmds --args $(EXE_FILE_NAME)   --testNumber=$(TST) # you need to put run in /tmp/cmds if you do not want type run 
+	
 clean:
 	rm -rf $(OBJ_DIR)
 	rm -f $(EXE_FILE_NAME)
@@ -41,6 +50,8 @@ release:
 	cp $(EXE_FILE_NAME) bin/$(EXE_FILE_NAME)
 	
 compile: $(EXE_FILE_NAME)
+#########################
+
 
 
 .DEFAULT_GOAL := compile

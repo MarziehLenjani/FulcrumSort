@@ -37,12 +37,13 @@ using namespace boost::assign;
 #define FULCRUM_32_BIT
 #ifdef FULCRUM_32_BIT
 #define READ_DATA_TYPE_IN_MEMORY_ARRAY unsigned char
+#define FULCRU_WORD_TYPE unsigned int
 #define ID_TYPE unsigned int
 #define LOCAL_ADDRESS_TYPE unsigned int
 #endif
 
 
-
+//----------------------------------------------
 
 //-----------------------------------------------
 
