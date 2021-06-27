@@ -16,9 +16,9 @@ computSubarray::computSubarray(ID_TYPE l_id, configAndStats * l_confObj, physica
 :physicalComponent(l_id, l_confObj, l_firstDimOwner, l_secondDimOwner, l_thirdDimOwner){
 	//TODO: do initializations specific for the subarray class here
 	memoryArrayObj= new memoryArray(0, l_confObj, this, NULL, NULL);
-	stackedMemoryObj=(stackedMemory*)((layer*)((bank*)firstDimOwner)->firstDimOwner);
 	bankObj = (bank*)firstDimOwner;
-	layerObj= (layer*)((bank*)firstDimOwner->firstDimOwner);
+	layerObj = (layer*)(bankObj->firstDimOwner);
+	stackedMemoryObj = (stackedMemory*)(layerObj->firstDimOwner);
 }
 
 computSubarray::~computSubarray(){
