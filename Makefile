@@ -6,6 +6,7 @@ LIBRARIES := -L$(BOOST_LIBRARYDIR)
 SRC_DIR := ./src
 OBJ_DIR := ./obj
 SRC_FILES := $(wildcard $(SRC_DIR)/*.cpp)
+HEADER_FILES := $(wildcard $(SRC_DIR)/*.hpp)
 OBJ_FILES := $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRC_FILES))
 LDFLAGS := $(LIBRARIES) -lboost_system -lboost_program_options
 CPPFLAGS := -g -Wall -std=c++11  $(INCLUDES) 
@@ -26,7 +27,7 @@ $(EXE_FILE_NAME): $(OBJ_FILES)
 loadModules:
 	bash -c "module load boost"
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp loadModules
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(HEADER_FILES) loadModules
 	g++ $(CPPFLAGS)  $(CXXFLAGS) $(EXTRA_COMPILE_OPTIONS) $(CONFIGURATION_COMPILE_OPTIONS) -fmax-errors=5 -c -o $@ $<
 build: $(EXE_FILE_NAME)
 ########################Main program 
@@ -44,12 +45,14 @@ debug:compile # you need to type run
 clean:
 	rm -rf $(OBJ_DIR)
 	rm -f $(EXE_FILE_NAME)
-	mkdir obj
 	
 release:
 	cp $(EXE_FILE_NAME) bin/$(EXE_FILE_NAME)
 	
-compile: $(EXE_FILE_NAME)
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)	
+
+compile: $(OBJ_DIR) $(EXE_FILE_NAME)
 #########################
 
 

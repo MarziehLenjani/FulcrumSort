@@ -36,7 +36,8 @@ class dataPartitioning{
 		assert(randArray!=NULL);
 		for (LOCAL_ADDRESS_TYPE i=0; i<numOFDataElements ;i++){
 
-			randArray[i]= (VALU_T) (rand() % maxRand + minRand);
+			//randArray[i]= (VALU_T) (rand() % maxRand + minRand);
+			randArray[i]= (VALU_T) (rand() % (maxRand - minRand) + minRand);
 		}
 		READ_DATA_TYPE_IN_MEMORY_ARRAY* dataToBePartitionedData= (READ_DATA_TYPE_IN_MEMORY_ARRAY*)randArray;
 		LOCAL_ADDRESS_TYPE sizeOFData=numOFDataElements* sizeof(VALU_T);
