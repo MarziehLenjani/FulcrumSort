@@ -1,0 +1,11 @@
+TODOs for Data generator APIs 
+	Varying key size 32 vs 64 (8/16 ??)
+	Varying types (integer and float)
+	Key-only sorting vs. Key-value sorting 
+	Uniform distribution
+	Normal distribution by varying standard deviation
+	Skewed distributions
+	Varying key entropy (bits) 
+	“repeatedly applying the bitwise AND operation to uniform random distributions, which increasingly skews the distribution towards keys with fewer bits set.”
+	Figure 10 in [A Memory Bandwidth-Efficient Hybrid Radix Sort on GPUs]
+	
