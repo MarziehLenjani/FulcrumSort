@@ -8,7 +8,6 @@
 #ifndef STACKEDMEMORY_HPP_
 #define STACKEDMEMORY_HPP_
 
-
 #include "physicalComponent.hpp"
 #include <vector>
 #include "layer.hpp"
@@ -30,6 +29,7 @@ public:
 	ID_TYPE numBanksPerLayer;
 	ID_TYPE numSubArraysPerBank;
 	ID_TYPE totNumComputeSubarray;
+	ID_TYPE logTotSubarray;
 	dataPartitioning* dataPartitioningObj=NULL;
 	void initializeSubarraysSelfindexes();
 	void incrementSubarraysSelfindexes();
@@ -37,8 +37,17 @@ public:
 	void openANewSubBucket();
 	void setMaskForBucketIDExtraction(FULCRU_WORD_TYPE maskForBucketExtaction,FULCRU_WORD_TYPE numberOfShiftsForBucketIDExtraction);
 
+	void initializeHistGenGlobal();
+	void runHistGenGlobalOneClockCycle();
 
+	void initializePrefixSumWithinArrayGlobal();
+	void runPrefixSumWithinArrayGlobalOneClockCycle();
 
+	void initializePrefixSumNextArrayGlobal();
+	void runPrefixSumNextArrayGlobalOneClockCycle();
+
+	void initializePlacementGlobal();
+	void runPlacementGlobalOneClockCycle();
 };
 
 

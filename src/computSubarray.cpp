@@ -4,12 +4,15 @@
  *  Created on: May 16, 2021
  *      Author: marzieh
  */
+
+#include "types.hpp"
 #include "computSubarray.hpp"
 #include "layer.hpp"
 #include "bank.hpp"
 #include "stackedMemory.hpp"
 #include "dataPartitioning.hpp"
 #include "dataTransfer.hpp"
+#include <cstring>
 
 
 computSubarray::computSubarray(ID_TYPE l_id, configAndStats * l_confObj, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner)
@@ -49,8 +52,7 @@ void computSubarray::runOneSubClokCycle(){
     	//TODO: implement what happens after reading here
     	LOCAL_ADDRESS_TYPE tempValueForRead;
     	memoryArrayObj->memory_read(readAddressCounter, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
-    	currentReadValue=tempValueForRead;
-    	LOCAL_ADDRESS_TYPE destinationId=(currentReadValue & RegA) >>RegB; //RegA is initialized with maskForBucketExtaction
+    	LOCAL_ADDRESS_TYPE destinationId=(tempValueForRead & RegA) >>RegB; //RegA is initialized with maskForBucketExtaction
     	dataTransfer* tmpPacket=new dataTransfer(sizeof(tempValueForRead),destinationId,(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &tempValueForRead);
     	incomingPackets.push(tmpPacket);
 
@@ -77,7 +79,7 @@ void computSubarray::runOneSubClokCycle(){
 
 			if(isDestinationForDataTransfer(tmpPacket)){
 				//packet has arrived
-				writeAddressCounter+=sizeof(FULCRU_WORD_TYPE);
+				writeAddressCounter += sizeof(FULCRU_WORD_TYPE);
 				LOCAL_ADDRESS_TYPE tempValueForWrite=*(tmpPacket->payload);
 
 				memoryArrayObj->memory_write(writeAddressCounter, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForWrite));
@@ -120,13 +122,9 @@ void computSubarray::initialize(LOCAL_ADDRESS_TYPE addressOfTheReadStartAddress,
 
 		 return;
 }
-bool computSubarray::isDestinationForDataTransfer(dataTransfer* packet){
-	bool hasArrived=false;
-	if(packet->destinationID==SelfIndex){
-		hasArrived=true;
-	}
-	return hasArrived;
 
+bool computSubarray::isDestinationForDataTransfer(dataTransfer* packet){
+	return packet->destinationID == SelfIndex;
 }
 
 void computSubarray::setMaskForBucketIDExtraction(FULCRU_WORD_TYPE maskForBucketExtaction, FULCRU_WORD_TYPE numberOfShiftsForBucketIDExtraction){
@@ -211,11 +209,260 @@ computSubarray* computSubarray::getNextComputeSubArray(dataTransfer * pckt){
 
 	return nextSubArray;
 }
+
 //--------------To be implemented functions
 void computSubarray::openANewSubBucket(){
-		// TODO: implement this function
-		//This function
+	// TODO: implement this function
+	//This function
 }
 
+void computSubarray::sealAllSubBuckets(){
+	// TODO: implement this function
+	//This function
+}
+
+FULCRU_WORD_TYPE computSubarray::extractBits(FULCRU_WORD_TYPE val, u32 highBitPos, u32 lowBitPos){
+	// Make sure parameters are okay
+	assert(highBitPos < (sizeof(FULCRU_WORD_TYPE) * 8));
+	assert(lowBitPos < (sizeof(FULCRU_WORD_TYPE) * 8));
+	assert(lowBitPos <= highBitPos);
+
+	u32 width = highBitPos - lowBitPos;
+	u64 mask = (1UL << width) - 1;
+
+	return (val >> lowBitPos) & mask;
+}
+
+void computSubarray::initializeHistGenGlobal(){
+	memset(hist, 0, NUM_BINS * sizeof(Histogram));
+	readEnded = false;
+
+	LOCAL_ADDRESS_TYPE tempValueForRead;
+
+	memoryArrayObj->memory_read(ADDRESS_OF_START_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
+	readStartAddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
+
+
+	memoryArrayObj->memory_read(ADDRESS_OF_END_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
+	readEndAdddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
+
+	//writeStartAddress = readEndAdddress;	// For now, write starts just after the read portion
+
+	readAddressCounter = readStartAddress;
+	//writeAddressCounter = writeStartAddress;
+
+	nwrdsInRow=confObj->getConfig<CONF_NUMBER_OF_WORDS_IN_A_ROW_TYPE>(CONF_NUMBER_OF_WORDS_IN_A_ROW_NAME);
+	rowCycleInSubClockCycle= confObj->getConfig<CONF_ROW_CYCLE_IN_SUB_CLOCK_CYCLE_TYPE>(CONF_ROW_CYCLE_IN_SUB_CLOCK_CYCLE_NAME);
+}
+
+bool computSubarray::isProceedRead(){
+	if(readEnded){
+		return false;
+	}
+	bool proceedRead=false;
+	if(readAddressCounter%nwrdsInRow !=0 ){
+		proceedRead=true;
+	}else{
+		if(writeWaitCounter==0){
+			readWaitCounter++;
+		}
+		if(readWaitCounter==rowCycleInSubClockCycle){
+			readWaitCounter=0;
+			proceedRead=true;
+		}
+	}
+	return proceedRead;
+}
+
+bool computSubarray::isProceedWrite(){
+	bool proceedWrite = false;
+	if(writeAddressCounter%nwrdsInRow !=0 ){
+		proceedWrite=true;
+	}else{
+		if(readWaitCounter==0){
+			writeWaitCounter++;
+		}
+		if(writeWaitCounter==rowCycleInSubClockCycle){
+			writeWaitCounter=0;
+			proceedWrite=true;
+		}
+	}
+	return proceedWrite;
+}
+
+void computSubarray::runHistGenGlobalOneClockCycle(){
+	if(isProceedRead()){
+		LOCAL_ADDRESS_TYPE currentReadValue;
+		memoryArrayObj->memory_read(readAddressCounter, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(currentReadValue));
+
+		FULCRU_WORD_TYPE dstSubForBin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray - 1, 0);
+		FULCRU_WORD_TYPE bin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray + LOG_NUM_BINS, stackedMemoryObj->logTotSubarray);
+
+		dataTransfer* tmpPacket=new dataTransfer(sizeof(FULCRU_WORD_TYPE), dstSubForBin, (READ_DATA_TYPE_IN_MEMORY_ARRAY*) &bin);
+		incomingPackets.push(tmpPacket);
+
+		readAddressCounter += sizeof(FULCRU_WORD_TYPE);
+		if(readAddressCounter == readEndAdddress){
+			readEnded = true;
+		}
+	}
+
+	if(isProceedWrite()){
+		//TODO: get the packet
+		//write it in the subarray
+		//delete the packet
+		if(incomingPackets.size()>0){
+			dataTransfer* tmpPacket=incomingPackets.front();
+			incomingPackets.pop();
+
+			if(isDestinationForDataTransfer(tmpPacket)){
+
+				// Will do read-modify-write based on the payload (the payload contains the bin)
+				FULCRU_WORD_TYPE bin = *(tmpPacket->payload);
+				hist[bin].cnt++;
+
+				delete tmpPacket;
+			}else{
+				auto nextSubArray=getNextComputeSubArray(tmpPacket);
+				nextSubArray->incomingPackets.push(tmpPacket);
+
+			}
+		}
+	}
+}
+
+void computSubarray::initializePrefixSumWithinArrayGlobal(){
+	readEnded = false;
+
+	//TODO: move hist to memory object
+	readStartAddress = 1;		//Not 0, as we need to access Hist[][bin-1]
+	readEndAdddress = NUM_BINS;
+	readAddressCounter = readStartAddress;
+}
+
+void computSubarray::runPrefixSumWithinArrayGlobalOneClockCycle(){
+	if(isProceedRead()){
+		hist[readAddressCounter].cnt += hist[readAddressCounter-1].cnt;
+		readAddressCounter++;
+
+		if(readAddressCounter == readEndAdddress){
+			readEnded = true;
+		}
+	}
+
+	if(isProceedWrite()){
+		//TODO: Anything to do here?
+	}
+}
+
+void computSubarray::initializePrefixSumNextArrayGlobal(){
+	readEnded = false;
+
+	//TODO: move hist to memory object
+	//Go from NUM_BINS -> 0 to make the prefix sum available early
+	readStartAddress = NUM_BINS-1;
+	readEndAdddress = 0;
+	readAddressCounter = readStartAddress;
+
+	isSumAvailable = false;
+	prefixSumOfLastSubarray = 0xDEADBEEF;		// Set to an odd value to detect if used pre-maturely
+	if(SelfIndex == 0){
+		isSumAvailable = true;
+		prefixSumOfLastSubarray = 0;
+	}
+}
+
+void computSubarray::runPrefixSumNextArrayGlobalOneClockCycle(){
+	if(isProceedRead() && isSumAvailable){
+		hist[readAddressCounter].cnt += prefixSumOfLastSubarray;
+		if((readAddressCounter == (NUM_BINS - 1)) && (SelfIndex != (stackedMemoryObj->totNumComputeSubarray - 1))){
+			//propagate value to next subarray
+			dataTransfer* tmpPacket=new dataTransfer(sizeof(FULCRU_WORD_TYPE), SelfIndex + 1, (READ_DATA_TYPE_IN_MEMORY_ARRAY*) &hist[readAddressCounter].cnt);
+			incomingPackets.push(tmpPacket);
+		}
+		if(readAddressCounter == readEndAdddress){
+			readEnded = true;
+		}
+		readAddressCounter--;
+	}
+
+	if(isProceedWrite()){
+		if(incomingPackets.size()>0){
+			dataTransfer* tmpPacket=incomingPackets.front();
+			incomingPackets.pop();
+
+			if(isDestinationForDataTransfer(tmpPacket)){
+				prefixSumOfLastSubarray = *(tmpPacket->payload);
+				isSumAvailable = true;
+
+				delete tmpPacket;
+			}else{
+				auto nextSubArray=getNextComputeSubArray(tmpPacket);
+				nextSubArray->incomingPackets.push(tmpPacket);
+
+			}
+		}
+	}
+}
+
+void computSubarray::initializePlacementGlobal(){
+	readEnded = false;
+
+	LOCAL_ADDRESS_TYPE tempValueForRead;
+
+	memoryArrayObj->memory_read(ADDRESS_OF_START_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
+	readStartAddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
+
+
+	memoryArrayObj->memory_read(ADDRESS_OF_END_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
+	readEndAdddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
+
+	writeStartAddress = readEndAdddress;	// For now, write starts just after the read portion
+
+	readAddressCounter = readStartAddress;
+	//writeAddressCounter = writeStartAddress;
+}
+
+void computSubarray::runPlacementGlobalOneClockCycle(){
+	if(isProceedRead()){
+		LOCAL_ADDRESS_TYPE currentReadValue;
+		memoryArrayObj->memory_read(readAddressCounter, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(currentReadValue));
+
+		FULCRU_WORD_TYPE dstSubForBin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray - 1, 0);
+		//FULCRU_WORD_TYPE bin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray + LOG_NUM_BINS, stackedMemoryObj->logTotSubarray);
+
+		//send key
+		dataTransfer* tmpPacket=new dataTransfer(sizeof(FULCRU_WORD_TYPE), dstSubForBin, (READ_DATA_TYPE_IN_MEMORY_ARRAY*) &currentReadValue);
+		incomingPackets.push(tmpPacket);
+
+		readAddressCounter += sizeof(FULCRU_WORD_TYPE);
+		if(readAddressCounter == readEndAdddress){
+			readEnded = true;
+		}
+	}
+
+	if(isProceedWrite()){
+		if(incomingPackets.size()>0){
+			dataTransfer* tmpPacket=incomingPackets.front();
+			incomingPackets.pop();
+
+			if(isDestinationForDataTransfer(tmpPacket)){
+				FULCRU_WORD_TYPE key = *(tmpPacket->payload);
+
+				FULCRU_WORD_TYPE bin = extractBits(key, stackedMemoryObj->logTotSubarray + LOG_NUM_BINS, stackedMemoryObj->logTotSubarray);
+
+				LOCAL_ADDRESS_TYPE location = writeStartAddress + (hist[bin].cnt + hist[bin].used) * sizeof(LOCAL_ADDRESS_TYPE);
+				hist[bin].used++;
+
+				memoryArrayObj->memory_write(location, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(key));
+
+				delete tmpPacket;
+			}else{
+				auto nextSubArray=getNextComputeSubArray(tmpPacket);
+				nextSubArray->incomingPackets.push(tmpPacket);
+			}
+		}
+	}
+}
 
 

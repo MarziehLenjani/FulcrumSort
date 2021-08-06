@@ -3,6 +3,7 @@
 
 
 #include<map>
+#include <cstdint>
 #include <boost/assign/list_of.hpp>
 #include <cassert>
 #include <stdio.h>
@@ -34,7 +35,10 @@ using namespace boost::assign;
 #define PHYSICAL_EXTERNAL_ADDRESS_TYPE_UNSIGHED_INT
 #define PHYSICAL_EXTERNAL_ADDRESS_TYPE unsigned  int
 #endif
+
+
 #define FULCRUM_32_BIT
+
 #ifdef FULCRUM_32_BIT
 #define READ_DATA_TYPE_IN_MEMORY_ARRAY unsigned char
 #define FULCRU_WORD_TYPE unsigned int
@@ -42,6 +46,27 @@ using namespace boost::assign;
 #define LOCAL_ADDRESS_TYPE unsigned int
 #endif
 
+
+typedef uint32_t VALUE_TYPE;
+typedef uint32_t u32;
+typedef uint64_t u64;
+
+typedef u32		HIST_COUNT_TYPE;
+
+typedef struct {
+	HIST_COUNT_TYPE cnt = 0;
+	HIST_COUNT_TYPE used = 0;
+} Histogram;
+
+
+
+// Configuration
+#define NUM_BINS			16
+#define LOG_NUM_BINS		4
+
+// Metadata description
+#define ADDRESS_OF_START_ADDRESS		0
+#define ADDRESS_OF_END_ADDRESS			4
 
 //----------------------------------------------
 

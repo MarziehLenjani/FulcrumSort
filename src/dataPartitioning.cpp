@@ -7,6 +7,7 @@
 #include "dataPartitioning.hpp"
 #include "stackedMemory.hpp"
 #include  <boost/utility/binary.hpp>
+
 dataPartitioning::dataPartitioning(stackedMemory * l_stackObj, configAndStats * l_confObj){
 	stackObj=l_stackObj;
 	confObj=l_confObj;
@@ -88,29 +89,36 @@ ERROR_RETURN_TYPE  dataPartitioning::broadcastDataToAllComputeSubArray (LOCAL_AD
 	return ret;
 }
 // when we partition data we have three steps: 1. deivinding data , wrinting the start and the the end address into the local subarrays in needed
-ERROR_RETURN_TYPE  dataPartitioning::partitionEquallyAmongAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY * dataToBePartitionedData, LOCAL_ADDRESS_TYPE sizeOFData ){
+ERROR_RETURN_TYPE  dataPartitioning::partitionEquallyAmongAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY * dataToBePartitionedData, LOCAL_ADDRESS_TYPE numOfDataElements ){
 
 	ERROR_RETURN_TYPE ret;
 	LOCAL_ADDRESS_TYPE i=0;
-	LOCAL_ADDRESS_TYPE eachPartition=std::ceil(sizeOFData/stackObj->totNumComputeSubarray);
+	LOCAL_ADDRESS_TYPE eachPartition = numOfDataElements / stackObj->totNumComputeSubarray;
+	LOCAL_ADDRESS_TYPE remainingElems =  numOfDataElements - eachPartition * stackObj->totNumComputeSubarray;
+	assert(remainingElems < stackObj->totNumComputeSubarray);
+
+	u64 totElemDistributed = 0;	//just for checking if all data elements are distributed
 	for(computSubarray* ptr : stackObj->computSubarrayVector){
-		LOCAL_ADDRESS_TYPE newSizeOFData=eachPartition;
-		if(i==(stackObj->totNumComputeSubarray-1)){
-			newSizeOFData=(sizeOFData)-(stackObj->totNumComputeSubarray-1)*eachPartition;
+		LOCAL_ADDRESS_TYPE numDataElementsInSubarray = eachPartition;
+		if(remainingElems){
+			numDataElementsInSubarray++;
+			remainingElems--;
 		}
-		ret= ptr->memoryArrayObj->memory_write(DataAddress, newSizeOFData, dataToBePartitionedData+eachPartition*i);
+		totElemDistributed += numDataElementsInSubarray;
+
+		ret= ptr->memoryArrayObj->memory_write(DataAddress, numDataElementsInSubarray * sizeof(VALUE_TYPE), dataToBePartitionedData + eachPartition * i * sizeof(VALUE_TYPE));
 		assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
 		if(writeMetadat){
 			LOCAL_ADDRESS_TYPE startAaddress=localAddressToLocalMetadata(DataAddress);
 			ret= ptr->memoryArrayObj->memory_write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
 			assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
-			LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress+newSizeOFData);
+			LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress + numDataElementsInSubarray * sizeof(VALUE_TYPE));
 			ret= ptr->memoryArrayObj->memory_write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
 			assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
-
 		}
 		i++;
 	}
+	assert(totElemDistributed == numOfDataElements);
 	return ret;
 }
 

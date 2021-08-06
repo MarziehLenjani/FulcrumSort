@@ -18,6 +18,7 @@
 #include "types.hpp"
 #include <stdlib.h>
 #include <iostream>
+
 class dataPartitioning{
 	public:
 	stackedMemory * stackObj;
@@ -27,21 +28,20 @@ class dataPartitioning{
 	ERROR_RETURN_TYPE broadcastDataToAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY* broadcastedData, LOCAL_ADDRESS_TYPE sizeOFData );
 	ERROR_RETURN_TYPE partitionEquallyAmongAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY* dataToBePartitionedData, LOCAL_ADDRESS_TYPE sizeOFData );
 	//template functions should be implemented inside hpp files
-	template<typename VALU_T, typename SEED_T>  ERROR_RETURN_TYPE generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (VALU_T minRand, VALU_T  maxRand, SEED_T seed,  LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, LOCAL_ADDRESS_TYPE numOFDataElements ){
+	ERROR_RETURN_TYPE generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (VALUE_TYPE minRand, VALUE_TYPE  maxRand, VALUE_TYPE seed,  LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, LOCAL_ADDRESS_TYPE numOfDataElements ){
 		//TODO: this implementation is only for int, complete it for other types
 		srand (seed);
-		VALU_T* randArray=NULL;
-		randArray=(VALU_T*) calloc(numOFDataElements, sizeof(VALU_T));
+		VALUE_TYPE* randArray=NULL;
+		randArray=(VALUE_TYPE*) calloc(numOfDataElements, sizeof(VALUE_TYPE));
 		ASSERT_EX(randArray!=NULL, std::cout<<"calloc returns ");
 		assert(randArray!=NULL);
-		for (LOCAL_ADDRESS_TYPE i=0; i<numOFDataElements ;i++){
+		for (LOCAL_ADDRESS_TYPE i=0; i<numOfDataElements ;i++){
 
 			//randArray[i]= (VALU_T) (rand() % maxRand + minRand);
-			randArray[i]= (VALU_T) (rand() % (maxRand - minRand) + minRand);
+			randArray[i]= (VALUE_TYPE) (rand() % (maxRand - minRand) + minRand);
 		}
 		READ_DATA_TYPE_IN_MEMORY_ARRAY* dataToBePartitionedData= (READ_DATA_TYPE_IN_MEMORY_ARRAY*)randArray;
-		LOCAL_ADDRESS_TYPE sizeOFData=numOFDataElements* sizeof(VALU_T);
-		ERROR_RETURN_TYPE ret= partitionEquallyAmongAllComputeSubArray (DataAddress, writeMetadat, AddressOfTheStartAddress,  AddressOfTheEndAdddress,  dataToBePartitionedData,  sizeOFData );
+		ERROR_RETURN_TYPE ret= partitionEquallyAmongAllComputeSubArray (DataAddress, writeMetadat, AddressOfTheStartAddress,  AddressOfTheEndAdddress,  dataToBePartitionedData,  numOfDataElements);
 		free(randArray);
 		return ret;
 	}
