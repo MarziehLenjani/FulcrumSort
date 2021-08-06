@@ -31,7 +31,7 @@ class memoryArray:public physicalComponent {
 	       :physicalComponent(l_id, l_confObj, l_firstDimOwner, l_secondDimOwner, l_thirdDimOwner){
 			debug_printf("Im in the memory_pool_obj constructor\n");
 			arraySize=l_confObj->getConfig<CONF_SIZE_OF_EACH_SUBARRAY_IN_BYTE_TYPE>(CONF_SIZE_OF_EACH_SUBARRAY_IN_BYTE_NAME);
-			debug_printf("Size of memory getting initialized = %ld\n",arraySize );
+			debug_printf("Size of memory getting initialized = %u\n",arraySize );
 			memory_pool = (READ_DATA_TYPE_IN_MEMORY_ARRAY*) calloc(arraySize, sizeof(READ_DATA_TYPE_IN_MEMORY_ARRAY));
 		}
 		
@@ -53,7 +53,7 @@ class memoryArray:public physicalComponent {
 	ERROR_RETURN_TYPE memory_read(LOCAL_ADDRESS_TYPE memory_address, LOCAL_ADDRESS_TYPE read_size, READ_DATA_TYPE_IN_MEMORY_ARRAY *read_data)
 	{
 		debug_printf("Point 1\n");
-		debug_printf("memory_pool_obj:	memory_address being read = %ld \n", memory_address);
+		debug_printf("memory_pool_obj:	memory_address being read = %u \n", memory_address);
 
 		// Check for out of bounds condition
 		if(PP_ERROR == is_address_translation_correct(memory_address+read_size))
@@ -81,7 +81,7 @@ class memoryArray:public physicalComponent {
 	ERROR_RETURN_TYPE printData(LOCAL_ADDRESS_TYPE memory_address, LOCAL_ADDRESS_TYPE read_size)
 	{
 		debug_printf("Point 1\n");
-		debug_printf("memory_pool_obj:	memory_address being read = %ld \n", memory_address);
+		debug_printf("memory_pool_obj:	memory_address being read = %u \n", memory_address);
 
 		// Check for out of bounds condition
 		if(PP_ERROR == is_address_translation_correct(memory_address+read_size))
@@ -99,7 +99,7 @@ class memoryArray:public physicalComponent {
 
 			printf("%d , ", tRead);
 
-			debug_printf("Address %ld = %d \n", increment, *(memory_pool + memory_address + increment));
+			debug_printf("Address %u = %d \n", increment, *(memory_pool + memory_address + increment));
 			//*read_data = ;
 			//read_data++;
 		}

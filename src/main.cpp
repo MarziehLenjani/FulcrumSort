@@ -8,6 +8,7 @@
 #include "test.hpp"
 #include <math.h>
 
+using namespace std;
 
 //#ifdef USE_THE_MAIN_MAIN
 int main(int argc, char **argv)
@@ -26,7 +27,65 @@ int main(int argc, char **argv)
 	CONF_TEST_NUMBER_TYPE testNumber=confObj.getConfig< CONF_TEST_NUMBER_TYPE>(std::string(CONF_TEST_NUMBER_NAME));
 	std::cout<<"testNumber is "<<testNumber<<std::endl;
 
+	u64 simCycles = 0;
+
 	if(testNumber==(CONF_TEST_NUMBER_TYPE)0){
+
+		// Implementation 2
+		int maxNumClockCycle=100000; //temp required before implementation ends
+
+		//Filling Subarrays with random data /dataset data using APIS in dataTransfer.hpp
+
+		int minRand=0;
+		int maxRand=100;
+		int seed=56;
+
+		bool writeMetadat=true;
+		// The first row of the Subarray always stores the metadata,
+		//LOCAL_ADDRESS_TYPE AddressOfTheStartAddress= 0; //so the start address of the inputData should be written in address zero
+		//LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress=4;   //the end address of the inputData should be written in address 4
+		LOCAL_ADDRESS_TYPE DataAddress= (LOCAL_ADDRESS_TYPE) 64; // the input data starts from address 64
+		LOCAL_ADDRESS_TYPE numOFDataElements =stackedMemoryObj.totNumComputeSubarray*10+7; // to test unequal partitions
+		std::cout<<"stackedMemoryObj.totNumComputeSubarray:"<<stackedMemoryObj.totNumComputeSubarray<<std::endl;
+		ERROR_RETURN_TYPE ret=dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, DataAddress, writeMetadat, ADDRESS_OF_START_ADDRESS, ADDRESS_OF_END_ADDRESS, numOFDataElements);
+
+		// Initialize Subarrays selfindexes
+		stackedMemoryObj.initializeSubarraysSelfindexes();
+
+
+		// Do iteration 1 (Global histogram based on LSB)
+
+		// Iteration 1 step 1 (Global histogram gen)
+		stackedMemoryObj.initializeHistGenGlobal();
+		while(!stackedMemoryObj.checkIfProcessHasEnd() && simCycles < maxNumClockCycle){
+			stackedMemoryObj.runHistGenGlobalOneClockCycle();
+			simCycles++;
+		}
+
+		//Iteration 1 step 2 (Prefix sum on global histogram)
+		stackedMemoryObj.initializePrefixSumWithinArrayGlobal();
+		while(!stackedMemoryObj.checkIfProcessHasEnd() && simCycles < maxNumClockCycle){
+			stackedMemoryObj.runPrefixSumWithinArrayGlobalOneClockCycle();
+			simCycles++;
+		}
+		stackedMemoryObj.initializePrefixSumNextArrayGlobal();
+		while(!stackedMemoryObj.checkIfProcessHasEnd() && simCycles < maxNumClockCycle){
+			stackedMemoryObj.runPrefixSumNextArrayGlobalOneClockCycle();
+			simCycles++;
+		}
+
+
+		//Iteration 1 step 3 (Placement)
+		stackedMemoryObj.initializePlacementGlobal();
+		while(!stackedMemoryObj.checkIfProcessHasEnd() && simCycles < maxNumClockCycle){
+			stackedMemoryObj.runPlacementGlobalOneClockCycle();
+			simCycles++;
+		}
+
+		cout << "Simulated: " << simCycles << " cycles" << endl;
+
+	}
+	else if(testNumber==(CONF_TEST_NUMBER_TYPE)1){
 		int maxNumClockCycle=1000; //temp required before implementation ends
 
 		//step 1: Filling Subarrays with random data /dataset data using APIS in dataTransfer.hpp
@@ -60,16 +119,19 @@ int main(int argc, char **argv)
 
 			FULCRU_WORD_TYPE numberOfBitsForBucketIDExtraction=std::min (log2 (stackedMemoryObj.totNumComputeSubarray),sizeof(FULCRU_WORD_TYPE)*8.0- (iter*log2 (stackedMemoryObj.totNumComputeSubarray)));
 			numberOfShiftsForBucketIDExtraction-=numberOfBitsForBucketIDExtraction;
-			FULCRU_WORD_TYPE numberofBucketsInThisIteration=pow(numberOfBitsForBucketIDExtraction,2);
-			FULCRU_WORD_TYPE maskForBucketExtaction=log2 (numberofBucketsInThisIteration)-1<<numberOfShiftsForBucketIDExtraction; //TODO: make sure this is correct
+			//FULCRU_WORD_TYPE numberofBucketsInThisIteration=pow(numberOfBitsForBucketIDExtraction,2);
+			FULCRU_WORD_TYPE numberofBucketsInThisIteration=pow(2,numberOfBitsForBucketIDExtraction);
+			FULCRU_WORD_TYPE maskForBucketExtaction = log2(numberofBucketsInThisIteration) - (1 << numberOfShiftsForBucketIDExtraction); //TODO: make sure this is correct
+
 
 			//
 			long long int stepClokCycleCounter=0;
+			FULCRU_WORD_TYPE subBucketCounter;
 			if(iter==0){ // In the first iteration there is no subucket
 
 				stackedMemoryObj.setMaskForBucketIDExtraction( maskForBucketExtaction, numberOfShiftsForBucketIDExtraction);
 				stackedMemoryObj.openANewSubBucket();
-				FULCRU_WORD_TYPE subBucketCounter=0;
+				subBucketCounter=0;
 
 				while(!stackedMemoryObj.checkIfProcessHasEnd() && stepClokCycleCounter<maxNumClockCycle ){
 					stackedMemoryObj.runOneSubClokCycle(); //
@@ -91,7 +153,7 @@ int main(int argc, char **argv)
 
 			}else{ // after the first iteration subBuckets have been formed.
 				//We need to process buckets of the previous iteration in serial but subBuckets can help paralleize the process
-				for (FULCRU_WORD_TYPE bucketCounter=0; bucketCounter<prevNumberOfBucke ; bucketCounter++ ){
+				for (FULCRU_WORD_TYPE bucketCounter=0; bucketCounter<prevNumberOfBuckets ; bucketCounter++ ){
 
 
 				}
@@ -105,7 +167,8 @@ int main(int argc, char **argv)
 			std::cout<<"stepClokCycleCounter"<< stepClokCycleCounter<<std::endl;
 			stepClokCycleCounter+=stepClokCycleCounter;
 		}
-	}else{
+	}
+	else {
 		bool testsuccess=tstObj.runTestByTestNumber(testNumber,&confObj, &stackedMemoryObj);
 	}
 

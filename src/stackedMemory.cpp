@@ -19,6 +19,7 @@ stackedMemory::stackedMemory(ID_TYPE l_id, configAndStats * l_confObj, physicalC
 	numBanksPerLayer=l_confObj->getConfig<CONF_NUMBER_OF_BANKS_PER_LAYER_TYPE>(CONF_NUMBER_OF_BANKS_PER_LAYER_NAME);
 	numSubArraysPerBank=l_confObj->getConfig<CONF_NUMBER_OF_COMPUTE_SUBARRAY_PER_BANK_TYPE>(CONF_NUMBER_OF_COMPUTE_SUBARRAY_PER_BANK_NAME);
 	totNumComputeSubarray=numLayers*numBanksPerLayer*numSubArraysPerBank;
+	logTotSubarray = round(log2(totNumComputeSubarray));
 	//generating a vector of compute subarrays for the stacked memory for easier acceess to all subarrays
 	//we do not need to delete this in the deconstructor, because these are just pointers that will be deleted in their own classs
 	for (ID_TYPE i=0;i<numLayers;i++){
@@ -43,27 +44,23 @@ stackedMemory::~stackedMemory(){
 }
 
 void stackedMemory::runOneSubClokCycle(){
-	for(layer* ptr : layerVector){
-		ptr->runOneSubClokCycle();
-
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->runOneSubClokCycle();
 	}
 }
+
+
 bool stackedMemory::checkIfProcessHasEnd(){
-
-	for (ID_TYPE i=0;i<numLayers;i++){
-		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
-			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
-				if(!layerVector[i]->bankVector[j]->computSubarrayVector[k]->endOfReadData){
-
-					return false;
-
-				}
-
-			}
+	//return true only if ALL subarray->readEnded is true and no in-flight data packets to process
+	for(computSubarray* subarray : computSubarrayVector){
+		if(!subarray->readEnded || subarray->incomingPackets.size()){
+			return false;
 		}
 	}
 	return true;
 }
+
+
 bool stackedMemory::checkIfSubBlockLimitIsReached(){
 
 	for (ID_TYPE i=0;i<numLayers;i++){
@@ -80,20 +77,14 @@ bool stackedMemory::checkIfSubBlockLimitIsReached(){
 	}
 	return false;
 }
+
 void stackedMemory::initializeSubarraysSelfindexes(){
 	FULCRU_WORD_TYPE tSelfIndex= (FULCRU_WORD_TYPE)0 ;
-	for (ID_TYPE i=0;i<numLayers;i++){
-		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
-			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
-				layerVector[i]->bankVector[j]->computSubarrayVector[k]->SelfIndex=tSelfIndex;
-				tSelfIndex++;
-
-			}
-		}
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->SelfIndex = tSelfIndex++;
 	}
-	return;
-
 }
+
 void stackedMemory::incrementSubarraysSelfindexes(){
 	FULCRU_WORD_TYPE tSelfIndex=0;
 	for (ID_TYPE i=0;i<numLayers;i++){
@@ -112,39 +103,72 @@ void stackedMemory::incrementSubarraysSelfindexes(){
 	return;
 
 }
+
 void stackedMemory::sealAllSubBuckets(){
-	for (ID_TYPE i=0;i<numLayers;i++){
-		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
-			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
-				//TODO: implement sealing write data
-			}
-		}
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->sealAllSubBuckets();
 	}
-	return;
 }
+
 void stackedMemory::openANewSubBucket(){
-	for (ID_TYPE i=0;i<numLayers;i++){
-		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
-			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
-				layerVector[i]->bankVector[j]->computSubarrayVector[k]->openANewSubBucket();
-
-			}
-		}
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->openANewSubBucket();
 	}
-	return;
 }
+
 void stackedMemory::setMaskForBucketIDExtraction(FULCRU_WORD_TYPE maskForBucketExtaction, FULCRU_WORD_TYPE numberOfShiftsForBucketIDExtraction){
-	for (ID_TYPE i=0;i<numLayers;i++){
-		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
-			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
-				layerVector[i]->bankVector[j]->computSubarrayVector[k]->setMaskForBucketIDExtraction(maskForBucketExtaction,numberOfShiftsForBucketIDExtraction);
-
-			}
-		}
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->setMaskForBucketIDExtraction(maskForBucketExtaction, numberOfShiftsForBucketIDExtraction);
 	}
-	return;
 }
 
+void stackedMemory::initializeHistGenGlobal(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->initializeHistGenGlobal();
+	}
+}
+
+void stackedMemory::runHistGenGlobalOneClockCycle(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->runHistGenGlobalOneClockCycle();
+	}
+}
+
+void stackedMemory::initializePrefixSumWithinArrayGlobal(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->initializePrefixSumWithinArrayGlobal();
+	}
+}
+
+void stackedMemory::runPrefixSumWithinArrayGlobalOneClockCycle(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->runPrefixSumWithinArrayGlobalOneClockCycle();
+	}
+}
+
+void stackedMemory::initializePrefixSumNextArrayGlobal(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->initializePrefixSumNextArrayGlobal();
+	}
+}
+
+void stackedMemory::runPrefixSumNextArrayGlobalOneClockCycle(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->runPrefixSumNextArrayGlobalOneClockCycle();
+	}
+}
+
+void stackedMemory::initializePlacementGlobal(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->initializePlacementGlobal();
+	}
+}
+
+void stackedMemory::runPlacementGlobalOneClockCycle(){
+	for(computSubarray* subarray : computSubarrayVector){
+		subarray->runPlacementGlobalOneClockCycle();
+	}
+}
 
 
 
