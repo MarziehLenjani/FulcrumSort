@@ -27,7 +27,7 @@ bank::~bank(){
 }
 void bank::runOneSubClokCycle(){
 	for(computSubarray* ptr : computSubarrayVector){
-		ptr->runOneSubClokCycle();
+		//ptr->runOneSubClokCycle();
 
 	}
 }

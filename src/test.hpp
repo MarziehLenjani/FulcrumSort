@@ -97,9 +97,9 @@ public:
 		std::cout<<"stackedMemoryObj.totNumComputeSubarray:"<<stackedMemoryObj->totNumComputeSubarray<<std::endl;
 		ERROR_RETURN_TYPE ret=dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, DataAddress, writeMetadat, AddressOfTheStartAddress, AddressOfTheEndAdddress, numOFDataElements );
 		LOCAL_ADDRESS_TYPE sizeOFFirstPartition=std::ceil(numOFDataElements*sizeof(int)/stackedMemoryObj->totNumComputeSubarray);
-		stackedMemoryObj->computSubarrayVector[0]->memoryArrayObj->printData(DataAddress, sizeOFFirstPartition);
-		stackedMemoryObj->computSubarrayVector[0]->memoryArrayObj->printData(AddressOfTheStartAddress, sizeof (LOCAL_ADDRESS_TYPE));
-		stackedMemoryObj->computSubarrayVector[0]->memoryArrayObj->printData(AddressOfTheEndAdddress, sizeof (LOCAL_ADDRESS_TYPE));
+		//stackedMemoryObj->computSubarrayVector[0]->memoryArrayObj->printData(DataAddress, sizeOFFirstPartition);
+		//stackedMemoryObj->computSubarrayVector[0]->memoryArrayObj->printData(AddressOfTheStartAddress, sizeof (LOCAL_ADDRESS_TYPE));
+		//stackedMemoryObj->computSubarrayVector[0]->memoryArrayObj->printData(AddressOfTheEndAdddress, sizeof (LOCAL_ADDRESS_TYPE));
 
 		return testSuccess;
 

@@ -6,6 +6,7 @@
  */
 #include "dataPartitioning.hpp"
 #include "stackedMemory.hpp"
+#include "MemoryObject.hpp"
 #include  <boost/utility/binary.hpp>
 
 dataPartitioning::dataPartitioning(stackedMemory * l_stackObj, configAndStats * l_confObj){
@@ -74,16 +75,12 @@ ERROR_RETURN_TYPE dataPartitioning::globalAddressToLocalAddressTranslation(PHYSI
 ERROR_RETURN_TYPE  dataPartitioning::broadcastDataToAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY * broadcastedData, LOCAL_ADDRESS_TYPE sizeOFData ){
 	ERROR_RETURN_TYPE ret;
 	for(computSubarray* ptr : stackObj->computSubarrayVector){
-		ret= ptr->memoryArrayObj->memory_write(DataAddress, sizeOFData, broadcastedData);
-		assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
+		ptr->memoryArrayObj->write(DataAddress, sizeOFData, broadcastedData);
 		if(writeMetadat){
 			LOCAL_ADDRESS_TYPE startAaddress=localAddressToLocalMetadata(DataAddress);
-			ret= ptr->memoryArrayObj->memory_write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
-			assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
+			ptr->memoryArrayObj->write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
 			LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress+sizeOFData);
-			ret= ptr->memoryArrayObj->memory_write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
-			assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
-
+			ptr->memoryArrayObj->write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
 		}
 	}
 	return ret;
@@ -104,17 +101,16 @@ ERROR_RETURN_TYPE  dataPartitioning::partitionEquallyAmongAllComputeSubArray (LO
 			numDataElementsInSubarray++;
 			remainingElems--;
 		}
-		totElemDistributed += numDataElementsInSubarray;
 
-		ret= ptr->memoryArrayObj->memory_write(DataAddress, numDataElementsInSubarray * sizeof(VALUE_TYPE), dataToBePartitionedData + eachPartition * i * sizeof(VALUE_TYPE));
-		assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
+		ptr->memoryArrayObj->write(DataAddress, numDataElementsInSubarray * sizeof(KEY_TYPE), dataToBePartitionedData + totElemDistributed * sizeof(KEY_TYPE));
+		totElemDistributed += numDataElementsInSubarray;
 		if(writeMetadat){
-			LOCAL_ADDRESS_TYPE startAaddress=localAddressToLocalMetadata(DataAddress);
-			ret= ptr->memoryArrayObj->memory_write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
-			assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
-			LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress + numDataElementsInSubarray * sizeof(VALUE_TYPE));
-			ret= ptr->memoryArrayObj->memory_write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
-			assert(ret==PP_SUCCESS ); //TODO: add some assertaion fail messages here
+			//LOCAL_ADDRESS_TYPE startAaddress=localAddressToLocalMetadata(DataAddress);
+			//ptr->memoryArrayObj->write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
+			//LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress + numDataElementsInSubarray * sizeof(KEY_TYPE));
+			//ptr->memoryArrayObj->write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
+			//ptr->memoryArrayObj->write32(AddressOfTheStartAddress, DataAddress);
+			ptr->memoryArrayObj->write32(AddressOfTheEndAdddress, DataAddress + numDataElementsInSubarray * sizeof(KEY_TYPE));
 		}
 		i++;
 	}
@@ -136,16 +132,16 @@ ERROR_RETURN_TYPE dataPartitioning::readData(LOCAL_ADDRESS_TYPE& DataAddress, bo
 
 		LOCAL_ADDRESS_TYPE startMetadatAddress;
 
-		stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->memory_read(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(startMetadatAddress));
+		stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->read(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(startMetadatAddress));
 		DataAddress=metadatatoLocalAddress (startMetadatAddress);
 		LOCAL_ADDRESS_TYPE endMetadatAddress;
-		stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->memory_read(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(endMetadatAddress));
+		stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->read(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(endMetadatAddress));
 		sizeOFData=metadatatoLocalAddress (endMetadatAddress-startMetadatAddress);
 		(*pointerToReadDataPointer)= (READ_DATA_TYPE_IN_MEMORY_ARRAY*) calloc(sizeOFData, sizeof(READ_DATA_TYPE_IN_MEMORY_ARRAY));
 
 	}else{ //read by size, size is a read value here
 			}
-	stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->memory_read(DataAddress, sizeOFData, (*pointerToReadDataPointer));
+	stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->read(DataAddress, sizeOFData, (*pointerToReadDataPointer));
 
 
 	if(printData){
