@@ -14,8 +14,7 @@ public:
 	ID_TYPE payloadWidthIn_READ_DATA_TYPE=0;
 	ID_TYPE destinationID=0;
 	READ_DATA_TYPE_IN_MEMORY_ARRAY * payload=NULL;
-	bool isPayloadHistObj = false;
-	dataTransfer(ID_TYPE t_payloadWidthIn_READ_DATA_TYPE, ID_TYPE t_destinationID, READ_DATA_TYPE_IN_MEMORY_ARRAY * t_payload, bool isHistObj = false);
+	dataTransfer(ID_TYPE t_payloadWidthIn_READ_DATA_TYPE, ID_TYPE t_destinationID, READ_DATA_TYPE_IN_MEMORY_ARRAY * t_payload);
 	~dataTransfer();
 };
 

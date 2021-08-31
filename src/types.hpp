@@ -40,33 +40,28 @@ using namespace boost::assign;
 #define FULCRUM_32_BIT
 
 #ifdef FULCRUM_32_BIT
-#define READ_DATA_TYPE_IN_MEMORY_ARRAY unsigned char
-#define FULCRU_WORD_TYPE unsigned int
-#define ID_TYPE unsigned int
-#define LOCAL_ADDRESS_TYPE unsigned int
+typedef unsigned char READ_DATA_TYPE_IN_MEMORY_ARRAY;
+typedef unsigned int FULCRU_WORD_TYPE;
+typedef unsigned int ID_TYPE;
+typedef unsigned int LOCAL_ADDRESS_TYPE;
 #endif
 
 
-typedef uint32_t VALUE_TYPE;
+typedef uint32_t HIST_ELEM_TYPE;
+typedef uint32_t KEY_TYPE;
+
+typedef uint8_t u8;
+typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-typedef u32		HIST_COUNT_TYPE;
 
-typedef struct {
-	HIST_COUNT_TYPE cnt = 0;
-	HIST_COUNT_TYPE used = 0;
-} Histogram;
-
-
-
-// Configuration
-#define NUM_BINS			16
-#define LOG_NUM_BINS		4
-
-// Metadata description
-#define ADDRESS_OF_START_ADDRESS		0
-#define ADDRESS_OF_END_ADDRESS			4
+//typedef u32		HIST_COUNT_TYPE;
+//
+//typedef struct {
+//	HIST_COUNT_TYPE cnt = 0;
+//	HIST_COUNT_TYPE used = 0;
+//} Histogram;
 
 //----------------------------------------------
 

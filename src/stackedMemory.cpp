@@ -29,6 +29,8 @@ stackedMemory::stackedMemory(ID_TYPE l_id, configAndStats * l_confObj, physicalC
 			}
 		}
 	}
+
+
 }
 
 stackedMemory::~stackedMemory(){
@@ -45,36 +47,36 @@ stackedMemory::~stackedMemory(){
 
 void stackedMemory::runOneSubClokCycle(){
 	for(computSubarray* subarray : computSubarrayVector){
-		subarray->runOneSubClokCycle();
+		//subarray->runOneSubClokCycle();
 	}
 }
 
 
 bool stackedMemory::checkIfProcessHasEnd(){
 	//return true only if ALL subarray->readEnded is true and no in-flight data packets to process
-	for(computSubarray* subarray : computSubarrayVector){
-		if(!subarray->readEnded || subarray->incomingPackets.size()){
-			return false;
-		}
-	}
+//	for(computSubarray* subarray : computSubarrayVector){
+//		if(!subarray->readEnded || subarray->incomingPackets.size()){
+//			return false;
+//		}
+//	}
 	return true;
 }
 
 
 bool stackedMemory::checkIfSubBlockLimitIsReached(){
 
-	for (ID_TYPE i=0;i<numLayers;i++){
-		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
-			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
-				if(!layerVector[i]->bankVector[j]->computSubarrayVector[k]->subBlockLimitIsReached){
-
-					return true;
-
-				}
-
-			}
-		}
-	}
+//	for (ID_TYPE i=0;i<numLayers;i++){
+//		for (ID_TYPE j=0;j<numBanksPerLayer;j++){
+//			for (ID_TYPE k=0;k<numSubArraysPerBank;k++){
+//				if(!layerVector[i]->bankVector[j]->computSubarrayVector[k]->subBlockLimitIsReached){
+//
+//					return true;
+//
+//				}
+//
+//			}
+//		}
+//	}
 	return false;
 }
 
@@ -122,53 +124,53 @@ void stackedMemory::setMaskForBucketIDExtraction(FULCRU_WORD_TYPE maskForBucketE
 	}
 }
 
-void stackedMemory::initializeHistGenGlobal(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->initializeHistGenGlobal();
-	}
-}
-
-void stackedMemory::runHistGenGlobalOneClockCycle(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->runHistGenGlobalOneClockCycle();
-	}
-}
-
-void stackedMemory::initializePrefixSumWithinArrayGlobal(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->initializePrefixSumWithinArrayGlobal();
-	}
-}
-
-void stackedMemory::runPrefixSumWithinArrayGlobalOneClockCycle(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->runPrefixSumWithinArrayGlobalOneClockCycle();
-	}
-}
-
-void stackedMemory::initializePrefixSumNextArrayGlobal(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->initializePrefixSumNextArrayGlobal();
-	}
-}
-
-void stackedMemory::runPrefixSumNextArrayGlobalOneClockCycle(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->runPrefixSumNextArrayGlobalOneClockCycle();
-	}
-}
-
-void stackedMemory::initializePlacementGlobal(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->initializePlacementGlobal();
-	}
-}
-
-void stackedMemory::runPlacementGlobalOneClockCycle(){
-	for(computSubarray* subarray : computSubarrayVector){
-		subarray->runPlacementGlobalOneClockCycle();
-	}
-}
+//void stackedMemory::initializeHistGenGlobal(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->initializeHistGenGlobal();
+//	}
+//}
+//
+//void stackedMemory::runHistGenGlobalOneClockCycle(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->runHistGenGlobalOneClockCycle();
+//	}
+//}
+//
+//void stackedMemory::initializePrefixSumWithinArrayGlobal(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->initializePrefixSumWithinArrayGlobal();
+//	}
+//}
+//
+//void stackedMemory::runPrefixSumWithinArrayGlobalOneClockCycle(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->runPrefixSumWithinArrayGlobalOneClockCycle();
+//	}
+//}
+//
+//void stackedMemory::initializePrefixSumNextArrayGlobal(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->initializePrefixSumNextArrayGlobal();
+//	}
+//}
+//
+//void stackedMemory::runPrefixSumNextArrayGlobalOneClockCycle(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->runPrefixSumNextArrayGlobalOneClockCycle();
+//	}
+//}
+//
+//void stackedMemory::initializePlacementGlobal(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->initializePlacementGlobal();
+//	}
+//}
+//
+//void stackedMemory::runPlacementGlobalOneClockCycle(){
+//	for(computSubarray* subarray : computSubarrayVector){
+//		subarray->runPlacementGlobalOneClockCycle();
+//	}
+//}
 
 
 
