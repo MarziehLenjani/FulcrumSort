@@ -14,7 +14,6 @@
 #include "statConfigNamesAndTypes.hpp"
 #include <stdio.h>
 #include <iostream>
-#include "memoryArray.hpp"
 #include "types.hpp"
 #include <stdlib.h>
 #include <iostream>
@@ -25,8 +24,7 @@
 class dataPartitioning{
 	public:
 	stackedMemory * stackObj;
-	configAndStats * confObj;
-	dataPartitioning(stackedMemory * l_stackObj, configAndStats * l_confObj);
+	dataPartitioning(stackedMemory * l_stackObj);
 	ERROR_RETURN_TYPE globalAddressToLocalAddressTranslation(PHYSICAL_EXTERNAL_ADDRESS_TYPE address, ID_TYPE & stackId, ID_TYPE & layerId, ID_TYPE & bankId, ID_TYPE & computeSubarrayID);
 	ERROR_RETURN_TYPE broadcastDataToAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY* broadcastedData, LOCAL_ADDRESS_TYPE sizeOFData );
 	ERROR_RETURN_TYPE partitionEquallyAmongAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY* dataToBePartitionedData, LOCAL_ADDRESS_TYPE sizeOFData );

@@ -8,21 +8,18 @@
 #ifndef PHYSICALCOMPONENT_HPP_
 #define PHYSICALCOMPONENT_HPP_
 #include "types.hpp"
-#include "configAndStats.hpp"
-
-
 
 class physicalComponent{
 
 public:
 	 ID_TYPE id;
-	 configAndStats * confObj=NULL;
+	 //configAndStats * confObj=NULL;
 
 
 	 physicalComponent * firstDimOwner;
 	 physicalComponent * secondDimOwner;
 	 physicalComponent * thirdDimOwner;
-	 physicalComponent(ID_TYPE l_id, configAndStats * l_confObj, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
+	 physicalComponent(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
 	 ~physicalComponent();
 };
 

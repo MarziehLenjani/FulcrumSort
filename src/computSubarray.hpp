@@ -78,7 +78,7 @@ public:
 	void initialize(LOCAL_ADDRESS_TYPE addressOfTheReadStartAddress,LOCAL_ADDRESS_TYPE addressOfTheReadEndAdddress, LOCAL_ADDRESS_TYPE addressOfTheWriteStartAddress,
 			FULCRU_WORD_TYPE t_RegA, FULCRU_WORD_TYPE t_RegB, FULCRU_WORD_TYPE t_SelfIndex ); //
 
-	computSubarray(ID_TYPE l_id, configAndStats * l_confObj, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
+	computSubarray(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
 	~computSubarray( );
 	void runOneSubClokCycle();
 	//memoryArray * memoryArrayObj;
@@ -88,6 +88,11 @@ public:
 	layer * layerObj;
 	bool isDestinationForDataTransfer(dataTransfer* packet);
 	Walker* walkers[NUM_WALKERS];
+
+	computSubarray* nextSubarraySameLayer = nullptr;
+	computSubarray* nextSubarrayUpLayer = nullptr;
+	computSubarray* nextSubarrayDownLayer = nullptr;
+
 
 	bool finishedLocalHist = false;
 	bool finishedPlacementRead = false;
@@ -107,6 +112,8 @@ public:
 
 	bool isProceedRead();
 	bool isProceedWrite();
+
+	void initNextSubarray();
 
 //	void initializeHistGenGlobal();
 //	void runHistGenGlobalOneClockCycle();
@@ -142,7 +149,7 @@ public:
 	void printHist();
 	void printHist(u64 maxElems);
 
-	u64 radixStartBit, radixEndBit;
+	u64 radixStartBit = 0, radixEndBit = 0;
 
 //	void initializeLocalSort();
 //	void runLocalSortOneClockCycle();
@@ -330,6 +337,24 @@ public:
 		}
 	}
 
+	u64 runLocalHist(){
+		u64 elemProcessed = 0;
+		memset(memoryArrayObj->data + histStartAddr, 0, G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE));
+		readStartAddrOfRange = readEndAddrOfRange;
+		while(readEndAddrOfRange < readEndAddr){
+			KEY_TYPE key = memoryArrayObj->readKey(readEndAddrOfRange);
+			FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
+			if(radix >= rangeEnd){
+				break;
+			}
+			elemProcessed++;
+			LOCAL_ADDRESS_TYPE histAddress = histStartAddr + (radix % G_NUM_HIST_ELEMS) * sizeof(HIST_ELEM_TYPE);
+			memoryArrayObj->incrementHist(histAddress);
+			readEndAddrOfRange += sizeof(KEY_TYPE);
+		}
+		return elemProcessed;
+	}
+
 	LOCAL_ADDRESS_TYPE currReadAddr = 0;
 	enum PlacementState {
 		PLACEMENT_STATE_HANDLE_READ,
@@ -347,10 +372,10 @@ public:
 		stalled = false;
 		currReadAddr = readEndAddrOfRange - sizeof(KEY_TYPE);
 		placementState = PLACEMENT_STATE_HANDLE_READ;
-		for(u64 i = 0; i < NUM_WALKERS; i++){
-			walkers[0]->isPendingReq = false;
-			walkers[0]->latchedRowIndex = -1;
-		}
+//		for(u64 i = 0; i < NUM_WALKERS; i++){
+//			walkers[i]->isPendingReq = false;
+//			walkers[i]->latchedRowIndex = -1;
+//		}
 	}
 
 
