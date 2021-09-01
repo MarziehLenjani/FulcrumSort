@@ -15,11 +15,20 @@ using namespace std;
 //#ifdef USE_THE_MAIN_MAIN
 int main(int argc, char **argv)
 {
+//	if(argc != 2){
+//		cout << "usage: <elem_per_subarray>" << endl;
+//		exit(-1);
+//	}
+//
+//	u64 G_NUM_OF_DATA_ELEMENTS = atol(argv[1]) * G_NUM_TOTAL_SUBARRAY;
+
 	u64 totalSimCyclesLocalSort = 0;
 	u64 totalSimCyclesHistGen = 0;
 	u64 totalSimCyclesPlacement = 0;
 	u64 currStepCycles = 0;
     long long int c=0;
+
+    assert((G_NUM_BANKS_PER_LAYER % 2) == 0);
 
     //----------------------building a 3d stack component
 	stackedMemory stackedMemoryObj((ID_TYPE)0, NULL, NULL, NULL);
@@ -47,8 +56,7 @@ int main(int argc, char **argv)
 		// [hist_start_addr] [hist_end_addr] [read_start_addr] [read_end_addr] [write_start_addr] [write_end_addr] ... others
 
 		cout << "Total compute subarrays: " << G_NUM_TOTAL_SUBARRAY << endl;
-		u64 numOfDataElems = G_NUM_TOTAL_SUBARRAY * 100 + 7; // to test unequal partitions
-		cout << "Data elements: " << numOfDataElems << endl;
+		cout << "Data elements: " << G_NUM_OF_DATA_ELEMENTS << endl;
 		cout << endl << endl;
 
 		// Initialize known meta data
@@ -63,8 +71,8 @@ int main(int argc, char **argv)
 		u64 rowMask = G_NUM_BYTES_IN_ROW - 1;
 		assert((readStartAddr & rowMask) == 0UL);
 
-		u64 maxElemsPerSubarray = numOfDataElems / G_NUM_TOTAL_SUBARRAY;
-		if(numOfDataElems % G_NUM_TOTAL_SUBARRAY){
+		u64 maxElemsPerSubarray = G_NUM_OF_DATA_ELEMENTS / G_NUM_TOTAL_SUBARRAY;
+		if(G_NUM_OF_DATA_ELEMENTS % G_NUM_TOTAL_SUBARRAY){
 			maxElemsPerSubarray++;
 		}
 		reservedBytesForReadWriteArray = maxElemsPerSubarray * sizeof(KEY_TYPE);
@@ -91,7 +99,7 @@ int main(int argc, char **argv)
 		// Initialize Subarrays selfindexes
 		stackedMemoryObj.initializeSubarraysSelfindexes();
 
-		ERROR_RETURN_TYPE ret = dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, readStartAddr, writeMetadat, G_ADDR_OF_READ_START_ADDR, G_ADDR_OF_READ_END_ADDR, numOfDataElems);
+		ERROR_RETURN_TYPE ret = dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, readStartAddr, writeMetadat, G_ADDR_OF_READ_START_ADDR, G_ADDR_OF_READ_END_ADDR, G_NUM_OF_DATA_ELEMENTS);
 
 //		cout << "Initial: " << endl;
 //		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
@@ -99,14 +107,19 @@ int main(int argc, char **argv)
 //		}
 //		cout << endl << endl;
 
-		for(u64 startBit = 0; startBit < G_KEY_BITS; startBit += G_RADIX_BITS){
-			u64 endBit = min(G_KEY_BITS, startBit + G_RADIX_BITS);
-			cout << "Processing bits [" << endBit - 1 << " : " << startBit << "]" << endl;
+		for(radixStartBit = 0; radixStartBit < G_KEY_BITS; radixStartBit += G_RADIX_BITS){
+			radixEndBit = min(G_KEY_BITS, radixStartBit + G_RADIX_BITS);
 
+			// Make sure parameters are okay
+			assert(radixEndBit <= (sizeof(FULCRU_WORD_TYPE) * 8));
+			assert(radixStartBit < (sizeof(FULCRU_WORD_TYPE) * 8));
+			assert(radixStartBit <= radixEndBit);
+
+			cout << "Processing bits [" << radixEndBit - 1 << " : " << radixStartBit << "]" << endl;
 
 			//----------------------------------------Local Sort----------------------------------------------
-			radixSortShift = startBit;
-			radixSortMask = radixSortMask = (1UL << endBit) - (1UL << radixSortShift);
+			radixSortShift = radixStartBit;
+			radixSortMask = radixSortMask = (1UL << radixEndBit) - (1UL << radixSortShift);
 
 			// Only approximately model local sort time
 			#pragma omp parallel for
@@ -114,7 +127,7 @@ int main(int argc, char **argv)
 				sub->runLocalRadixSort();
 				//sub->printReadElements();
 			}
-			currStepCycles = G_LOCAL_SORT_INIT_CYCLES + (reservedBytesForReadWriteArray / sizeof(KEY_TYPE)) * (endBit - startBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
+			currStepCycles = G_LOCAL_SORT_INIT_CYCLES + (reservedBytesForReadWriteArray / sizeof(KEY_TYPE)) * (radixEndBit - radixStartBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
 			simCycles += currStepCycles;
 			totalSimCyclesLocalSort += currStepCycles;
 			printSimCycle("\tFinished local sort");
@@ -122,7 +135,7 @@ int main(int argc, char **argv)
 			// Initialization that are needed only once per radix bits
 			#pragma omp parallel for
 			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-				sub->initPerRadix(startBit, endBit);
+				sub->initPerRadix();
 			}
 
 
@@ -250,7 +263,7 @@ int main(int argc, char **argv)
 		//Check validity of output
 		//1. Merge output of subarrays
 		vector<KEY_TYPE> outData;
-		outData.reserve(numOfDataElems);
+		outData.reserve(G_NUM_OF_DATA_ELEMENTS);
 		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 			LOCAL_ADDRESS_TYPE startAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
 			LOCAL_ADDRESS_TYPE endAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR);
@@ -260,10 +273,10 @@ int main(int argc, char **argv)
 			}
 		}
 
-		assert(outData.size() == numOfDataElems);
+		assert(outData.size() == G_NUM_OF_DATA_ELEMENTS);
 
-		sort(dataArray, dataArray + numOfDataElems);
-		for(u64 i = 0; i < numOfDataElems; i++){
+		sort(dataArray, dataArray + G_NUM_OF_DATA_ELEMENTS);
+		for(u64 i = 0; i < G_NUM_OF_DATA_ELEMENTS; i++){
 			if(dataArray[i] != outData[i]){
 				cout << "[FAIL at " << i << "] expected: " << dataArray[i] << "       actual: " << outData[i] << endl;
 				return -1;

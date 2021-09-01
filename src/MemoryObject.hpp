@@ -134,4 +134,8 @@ public:
 		((HIST_ELEM_TYPE*)(data + addr))[0]++;
 	}
 
+	void decrementHist(LOCAL_ADDRESS_TYPE addr){
+		((HIST_ELEM_TYPE*)(data + addr))[0]--;
+	}
+
 };

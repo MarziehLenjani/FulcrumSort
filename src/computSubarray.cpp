@@ -147,7 +147,7 @@ void computSubarray::setMaskForBucketIDExtraction(
 }
 //TODO:To be comepleted nd tested functions
 
-computSubarray* computSubarray::getNextComputeSubArray(dataTransfer *pckt) {
+std::queue <dataTransfer*>* computSubarray::getNextComputeSubArrayQ(dataTransfer *pckt) {
 
 	//Alif: Now using precomputed pointers to speed up routing simulation
 	if(id == 0){
@@ -155,19 +155,19 @@ computSubarray* computSubarray::getNextComputeSubArray(dataTransfer *pckt) {
 		u64 currLayer = layerObj->id;
 		u64 destLayer = pckt->destinationID / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
 		if(currLayer == destLayer){
-			return nextSubarraySameLayer;	//same layer
+			return nextSubarraySameLayerQ;	//same layer
 		}
 		else if(currLayer < destLayer){
 			//go up
-			return nextSubarrayUpLayer;
+			return nextSubarrayUpLayerQ;
 		}
 		else{
 			//go down
-			return nextSubarrayDownLayer;
+			return nextSubarrayDownLayerQ;
 		}
 	}
 	else{
-		return nextSubarraySameLayer;
+		return nextSubarraySameLayerQ;
 	}
 
 //	computSubarray *nextSubArray = NULL;
@@ -242,7 +242,7 @@ computSubarray* computSubarray::getNextComputeSubArray(dataTransfer *pckt) {
 }
 
 void computSubarray::initNextSubarray(){
-	//Pre compute the next subarray if routing within the same layer
+	//Pre compute the next subarray packet queue pointer if routing within the same layer
 	bank *nextBank = NULL;
 	if (bankObj->id != (G_NUM_BANKS_PER_LAYER - 1)) {
 		nextBank = layerObj->bankVector[bankObj->id + 1];
@@ -252,15 +252,15 @@ void computSubarray::initNextSubarray(){
 
 	if (bankObj->id % 2 == 0) { //even bank, directing upward
 		if (id != (G_NUM_SUBARRAY_PER_BANK - 1)) {
-			nextSubarraySameLayer = bankObj->computSubarrayVector[id + 1];
+			nextSubarraySameLayerQ = &(bankObj->computSubarrayVector[id + 1]->incomingPackets);
 		} else {
-			nextSubarraySameLayer =	nextBank->computSubarrayVector[G_NUM_SUBARRAY_PER_BANK - 1];
+			nextSubarraySameLayerQ = &(nextBank->computSubarrayVector[G_NUM_SUBARRAY_PER_BANK - 1]->incomingPackets);
 		}
 	} else {
 		if (id != 0) { // odd bank directing downward
-			nextSubarraySameLayer = bankObj->computSubarrayVector[id - 1];
+			nextSubarraySameLayerQ = &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
 		} else {
-			nextSubarraySameLayer = nextBank->computSubarrayVector[0];
+			nextSubarraySameLayerQ = &(nextBank->computSubarrayVector[0]->incomingPackets);
 		}
 	}
 
@@ -271,11 +271,11 @@ void computSubarray::initNextSubarray(){
 
 		//pre compute the down layer's connecting subarray
 		if(currLayer != 0){
-			nextSubarrayDownLayer = stackedMemoryObj->layerVector[currLayer - 1]->bankVector[currBank]->computSubarrayVector[0];
+			nextSubarrayDownLayerQ = &(stackedMemoryObj->layerVector[currLayer - 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
 		}
 
 		if(currLayer != (G_NUM_LAYERS - 1)){
-			nextSubarrayUpLayer = stackedMemoryObj->layerVector[currLayer + 1]->bankVector[currBank]->computSubarrayVector[0];
+			nextSubarrayUpLayerQ = &(stackedMemoryObj->layerVector[currLayer + 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
 		}
 	}
 }
