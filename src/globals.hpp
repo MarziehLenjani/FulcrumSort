@@ -7,16 +7,23 @@
 #include <iostream>
 
 // Configuration
-//#define G_NUM_BINS					16
-//#define G_LOG_NUM_BINS				4
+#define G_NUM_LAYERS				8
+#define G_NUM_BANKS_PER_LAYER		64
+#define G_NUM_SUBARRAY_PER_BANK		16
+//#define G_NUM_LAYERS				1
+//#define G_NUM_BANKS_PER_LAYER		2
+//#define G_NUM_SUBARRAY_PER_BANK		2
+#define G_SIZE_OF_SUBARRAY_IN_BYTE	(1024*1024UL)
 
+#define G_NUM_TOTAL_SUBARRAY		(G_NUM_LAYERS * G_NUM_BANKS_PER_LAYER * G_NUM_SUBARRAY_PER_BANK)
+
+#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 512)
 
 #define G_NUM_WORDS_IN_ROW			64
 #define G_NUM_BYTES_IN_ROW			(G_NUM_WORDS_IN_ROW * sizeof(FULCRU_WORD_TYPE))
 
 #define G_RADIX_BITS				11
 #define G_KEY_BITS					(sizeof(KEY_TYPE) * 8)
-//#define G_KEY_BITS					32UL
 #define G_NUM_HIST_ELEMS			256
 
 
@@ -24,16 +31,19 @@
 #define G_LOCAL_SORT_INIT_CYCLES					8
 #define G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT		1
 #define G_LOCAL_HIST_RESET_CYCLES_PER_ELEM			1
+#define G_LOCAL_HIST_CYCLES_PER_ELEM				2
 #define G_REDUCTION_PER_HIST_ELEM_CYCLES			1
 #define G_OFFSET_PER_HIST_ELEM_CYCLES				1
+
 
 
 //#define G_ROW_READ_LATENCY		3
 //#define G_ROW_WRITE_LATENCY		4
 //#define G_ROW_RMW_LATENCY		5
 
-#define G_ROW_OPEN_LATENCY				3
-#define G_ROW_CLOSE_LATENCY				2
+#define G_ROW_OPEN_LATENCY				10
+#define G_ROW_CLOSE_LATENCY				6
+#define G_ROW_ACCESS_LATENCY			(G_ROW_OPEN_LATENCY + G_ROW_CLOSE_LATENCY)
 //#define G_ADDITIONAL_LATENCY_READ		1
 //#define G_ADDITIONAL_LATENCY_WRITE		1
 
@@ -52,7 +62,8 @@
 //#define G_ADDR_OF_TEMP_READ_ADDR			24
 
 
-#define PLACEMENT_QUEUE_HIGH_WATER_MARK		7
+#define PLACEMENT_QUEUE_MAX_CAPACITY		8
+#define PLACEMENT_QUEUE_HIGH_WATER_MARK		5
 #define PLACEMENT_QUEUE_LOW_WATER_MARK		2
 
 
@@ -61,6 +72,9 @@
 extern u64 simCycles;
 extern u64 radixSortMask;
 extern u64 radixSortShift;
+
+extern u64 radixStartBit;
+extern u64 radixEndBit;
 
 extern KEY_TYPE rangeEnd;
 extern u64 numOfProcessedSubarrays;

@@ -127,4 +127,15 @@ public:
 	void writeHist(LOCAL_ADDRESS_TYPE addr, const HIST_ELEM_TYPE val) {
 		writeX<HIST_ELEM_TYPE>(addr, val);
 	}
+
+
+
+	void incrementHist(LOCAL_ADDRESS_TYPE addr){
+		((HIST_ELEM_TYPE*)(data + addr))[0]++;
+	}
+
+	void decrementHist(LOCAL_ADDRESS_TYPE addr){
+		((HIST_ELEM_TYPE*)(data + addr))[0]--;
+	}
+
 };

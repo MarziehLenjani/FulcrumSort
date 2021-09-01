@@ -16,3 +16,6 @@ u64 reservedBytesForReadWriteArray = 0;
 LOCAL_ADDRESS_TYPE histStartAddr = 0;
 LOCAL_ADDRESS_TYPE histEndAddr = 0;
 KEY_TYPE* dataArray = nullptr;
+
+u64 radixStartBit = 0;
+u64 radixEndBit = 0;

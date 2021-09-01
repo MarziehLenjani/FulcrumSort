@@ -20,7 +20,7 @@ public:
 	ID_TYPE latencyPerPacketInCycle;
 	bool isBusy();
 	void setBusy(bool busy) ;
-	transferMedium(ID_TYPE l_id, configAndStats * l_confObj, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
+	transferMedium(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
 	~transferMedium();
 
 };

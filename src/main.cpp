@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <iostream>
-#include "configAndStats.hpp"
 #include "physicalComponent.hpp"
 #include "stackedMemory.hpp"
 #include "statConfigNamesAndTypes.hpp"
@@ -16,19 +15,29 @@ using namespace std;
 //#ifdef USE_THE_MAIN_MAIN
 int main(int argc, char **argv)
 {
-    long long int c=0;
-	configAndStats confObj;
-	confObj.parseOptions(argc, argv);
-	tests tstObj;
+//	if(argc != 2){
+//		cout << "usage: <elem_per_subarray>" << endl;
+//		exit(-1);
+//	}
+//
+//	u64 G_NUM_OF_DATA_ELEMENTS = atol(argv[1]) * G_NUM_TOTAL_SUBARRAY;
 
-	//----------------------building a 3d stack component
-	stackedMemory stackedMemoryObj((ID_TYPE)0,&confObj, NULL, NULL, NULL);
+	u64 totalSimCyclesLocalSort = 0;
+	u64 totalSimCyclesHistGen = 0;
+	u64 totalSimCyclesPlacement = 0;
+	u64 currStepCycles = 0;
+    long long int c=0;
+
+    assert((G_NUM_BANKS_PER_LAYER % 2) == 0);
+
+    //----------------------building a 3d stack component
+	stackedMemory stackedMemoryObj((ID_TYPE)0, NULL, NULL, NULL);
 	//-----------------------building dataPartitioning object to its APIs
-	dataPartitioning dataPartitioningObj(&stackedMemoryObj,&confObj);
+	dataPartitioning dataPartitioningObj(&stackedMemoryObj);
 
 	//----------------
-	CONF_TEST_NUMBER_TYPE testNumber=confObj.getConfig< CONF_TEST_NUMBER_TYPE>(std::string(CONF_TEST_NUMBER_NAME));
-	std::cout<<"testNumber is "<<testNumber<<std::endl;
+	CONF_TEST_NUMBER_TYPE testNumber = 0;
+	//std::cout<<"testNumber is "<<testNumber<<std::endl;
 
 	if(testNumber==(CONF_TEST_NUMBER_TYPE)0){
 		int maxNumClockCycle=100000;
@@ -46,9 +55,8 @@ int main(int argc, char **argv)
 		// [metadata] is organized as:
 		// [hist_start_addr] [hist_end_addr] [read_start_addr] [read_end_addr] [write_start_addr] [write_end_addr] ... others
 
-		cout << "Total compute subarrays: " << stackedMemoryObj.totNumComputeSubarray << endl;
-		u64 numOfDataElems = stackedMemoryObj.totNumComputeSubarray * 100 + 7; // to test unequal partitions
-		cout << "Data elements: " << numOfDataElems << endl;
+		cout << "Total compute subarrays: " << G_NUM_TOTAL_SUBARRAY << endl;
+		cout << "Data elements: " << G_NUM_OF_DATA_ELEMENTS << endl;
 		cout << endl << endl;
 
 		// Initialize known meta data
@@ -63,8 +71,8 @@ int main(int argc, char **argv)
 		u64 rowMask = G_NUM_BYTES_IN_ROW - 1;
 		assert((readStartAddr & rowMask) == 0UL);
 
-		u64 maxElemsPerSubarray = numOfDataElems / stackedMemoryObj.totNumComputeSubarray;
-		if(numOfDataElems % stackedMemoryObj.totNumComputeSubarray){
+		u64 maxElemsPerSubarray = G_NUM_OF_DATA_ELEMENTS / G_NUM_TOTAL_SUBARRAY;
+		if(G_NUM_OF_DATA_ELEMENTS % G_NUM_TOTAL_SUBARRAY){
 			maxElemsPerSubarray++;
 		}
 		reservedBytesForReadWriteArray = maxElemsPerSubarray * sizeof(KEY_TYPE);
@@ -78,9 +86,9 @@ int main(int argc, char **argv)
 		assert((writeStartAddr & rowMask) == 0UL);
 
 		//check if the end of write array fits within the subarray
-		assert((writeStartAddr + reservedBytesForReadWriteArray) <=
-				confObj.getConfig<CONF_SIZE_OF_EACH_SUBARRAY_IN_BYTE_TYPE>(CONF_SIZE_OF_EACH_SUBARRAY_IN_BYTE_NAME));
+		assert((writeStartAddr + reservedBytesForReadWriteArray) <=	G_SIZE_OF_SUBARRAY_IN_BYTE);
 
+		#pragma omp parallel for
 		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_START_ADDR, histStartAddr);
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_END_ADDR, histEndAddr);
@@ -91,7 +99,7 @@ int main(int argc, char **argv)
 		// Initialize Subarrays selfindexes
 		stackedMemoryObj.initializeSubarraysSelfindexes();
 
-		ERROR_RETURN_TYPE ret = dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, readStartAddr, writeMetadat, G_ADDR_OF_READ_START_ADDR, G_ADDR_OF_READ_END_ADDR, numOfDataElems);
+		ERROR_RETURN_TYPE ret = dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, readStartAddr, writeMetadat, G_ADDR_OF_READ_START_ADDR, G_ADDR_OF_READ_END_ADDR, G_NUM_OF_DATA_ELEMENTS);
 
 //		cout << "Initial: " << endl;
 //		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
@@ -99,27 +107,35 @@ int main(int argc, char **argv)
 //		}
 //		cout << endl << endl;
 
-		for(u64 startBit = 0; startBit < G_KEY_BITS; startBit += G_RADIX_BITS){
-			u64 endBit = min(G_KEY_BITS, startBit + G_RADIX_BITS);
-			cout << "Processing bits [" << endBit - 1 << " : " << startBit << "]" << endl;
+		for(radixStartBit = 0; radixStartBit < G_KEY_BITS; radixStartBit += G_RADIX_BITS){
+			radixEndBit = min(G_KEY_BITS, radixStartBit + G_RADIX_BITS);
 
+			// Make sure parameters are okay
+			assert(radixEndBit <= (sizeof(FULCRU_WORD_TYPE) * 8));
+			assert(radixStartBit < (sizeof(FULCRU_WORD_TYPE) * 8));
+			assert(radixStartBit <= radixEndBit);
+
+			cout << "Processing bits [" << radixEndBit - 1 << " : " << radixStartBit << "]" << endl;
 
 			//----------------------------------------Local Sort----------------------------------------------
-			radixSortShift = startBit;
-			radixSortMask = radixSortMask = (1UL << endBit) - (1UL << radixSortShift);
+			radixSortShift = radixStartBit;
+			radixSortMask = radixSortMask = (1UL << radixEndBit) - (1UL << radixSortShift);
 
 			// Only approximately model local sort time
-			//#pragma omp parallel for
+			#pragma omp parallel for
 			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 				sub->runLocalRadixSort();
 				//sub->printReadElements();
 			}
-			simCycles += G_LOCAL_SORT_INIT_CYCLES + (reservedBytesForReadWriteArray / sizeof(KEY_TYPE)) * (endBit - startBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
-//			printSimCycle("\tFinished local sort");
+			currStepCycles = G_LOCAL_SORT_INIT_CYCLES + (reservedBytesForReadWriteArray / sizeof(KEY_TYPE)) * (radixEndBit - radixStartBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
+			simCycles += currStepCycles;
+			totalSimCyclesLocalSort += currStepCycles;
+			printSimCycle("\tFinished local sort");
 
 			// Initialization that are needed only once per radix bits
+			#pragma omp parallel for
 			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-				sub->initPerRadix(startBit, endBit);
+				sub->initPerRadix();
 			}
 
 
@@ -130,18 +146,29 @@ int main(int argc, char **argv)
 				cout << "\tRange [" << rangeStart << " : " << rangeEnd << "]" << endl;
 
 				//----------------------------------- Local Histogram ----------------------------------------
-				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-					sub->initLocalHistPerRange();
-				}
+//				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+//					sub->initLocalHistPerRange();
+//				}
+//
+//				numOfProcessedSubarrays = 0;
+//				while(numOfProcessedSubarrays != stackedMemoryObj.totNumComputeSubarray){
+//					//#pragma omp parallel for
+//					for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+//						sub->runLocalHistOneCycle();
+//					}
+//					simCycles++;
+//				}
 
-				numOfProcessedSubarrays = 0;
-				while(numOfProcessedSubarrays != stackedMemoryObj.totNumComputeSubarray){
-					//#pragma omp parallel for
-					for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-						sub->runLocalHistOneCycle();
+				u64 maxElemProcessed = 0;
+				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+					u64 elemProcessed = sub->runLocalHist();
+					if(elemProcessed > maxElemProcessed){
+						maxElemProcessed = elemProcessed;
 					}
-					simCycles++;
 				}
+				currStepCycles = (maxElemProcessed * G_LOCAL_HIST_CYCLES_PER_ELEM) + (G_LOCAL_HIST_RESET_CYCLES_PER_ELEM * G_NUM_HIST_ELEMS);
+				simCycles += currStepCycles;
+				totalSimCyclesHistGen += currStepCycles;
 				printSimCycle("\t\tFinished building local histogram");
 				//for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 				//	sub->printHist();
@@ -149,7 +176,7 @@ int main(int argc, char **argv)
 
 
 				//----------------------------------- Histogram Reduction -------------------------------------
-				for(u64 i = 1; i < stackedMemoryObj.totNumComputeSubarray; i++){
+				for(u64 i = 1; i < G_NUM_TOTAL_SUBARRAY; i++){
 					HIST_ELEM_TYPE* currSubHist = (HIST_ELEM_TYPE*)(stackedMemoryObj.computSubarrayVector[i]->memoryArrayObj->data + histStartAddr);
 					HIST_ELEM_TYPE* prevSubHist = (HIST_ELEM_TYPE*)(stackedMemoryObj.computSubarrayVector[i-1]->memoryArrayObj->data + histStartAddr);
 
@@ -158,18 +185,21 @@ int main(int argc, char **argv)
 					}
 				}
 				//Approximate the timing of histogram reduction. Can be done because the accesses are sequential.
-				simCycles += (G_NUM_HIST_ELEMS + stackedMemoryObj.totNumComputeSubarray) * G_REDUCTION_PER_HIST_ELEM_CYCLES;
+				currStepCycles = (G_NUM_HIST_ELEMS + G_NUM_TOTAL_SUBARRAY) * G_REDUCTION_PER_HIST_ELEM_CYCLES;
+				simCycles += currStepCycles;
+				totalSimCyclesHistGen += currStepCycles;
 
 				//Calculate prefix sum of the last subarray
 				HIST_ELEM_TYPE prefixSum[G_NUM_HIST_ELEMS];
 				prefixSum[0] = lastIdx;
-				HIST_ELEM_TYPE* lastSubHist = (HIST_ELEM_TYPE*)(stackedMemoryObj.computSubarrayVector[stackedMemoryObj.totNumComputeSubarray-1]->memoryArrayObj->data + histStartAddr);
+				HIST_ELEM_TYPE* lastSubHist = (HIST_ELEM_TYPE*)(stackedMemoryObj.computSubarrayVector[G_NUM_TOTAL_SUBARRAY-1]->memoryArrayObj->data + histStartAddr);
 				for(u64 i = 1; i < G_NUM_HIST_ELEMS; i++){
 					prefixSum[i] = prefixSum[i-1] + lastSubHist[i-1];
 				}
 				lastIdx = prefixSum[G_NUM_HIST_ELEMS - 1] + lastSubHist[G_NUM_HIST_ELEMS - 1];
 
 				//Add offset to get final location
+				#pragma omp parallel for
 				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 					HIST_ELEM_TYPE* histArray = (HIST_ELEM_TYPE*)(sub->memoryArrayObj->data + histStartAddr);
 					for(u64 i = 0; i < G_NUM_HIST_ELEMS; i++){
@@ -177,23 +207,27 @@ int main(int argc, char **argv)
 					}
 				}
 				//Approximate the timing of offset calculation (we can also ignore this part as the time required would be really small)
-				simCycles += G_NUM_HIST_ELEMS * G_OFFSET_PER_HIST_ELEM_CYCLES;
+				currStepCycles = G_NUM_HIST_ELEMS * G_OFFSET_PER_HIST_ELEM_CYCLES;
+				simCycles += currStepCycles;
+				totalSimCyclesHistGen += currStepCycles;
 				printSimCycle("\t\tFinished reducing histogram");
 
 
 				//--------------------------------------- Placement ------------------------------------------
+				#pragma omp parallel for
 				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 					sub->initPlacementPerRange();
 				}
 
 				numOfProcessedSubarrays = 0;
 				numOfInFlightPackets = 0;
-				while((numOfProcessedSubarrays != stackedMemoryObj.totNumComputeSubarray) || (numOfInFlightPackets != 0)){
+				while((numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY) || (numOfInFlightPackets != 0)){
 					//#pragma omp parallel for
 					for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 						sub->runPlacementOneCycle();
 					}
 					simCycles++;
+					totalSimCyclesPlacement++;
 				}
 				printSimCycle("\t\tFinished Placement");
 			}
@@ -219,11 +253,17 @@ int main(int argc, char **argv)
 //		}
 
 		printSimCycle("FINISHED!");
+		u64 totalCycles = totalSimCyclesLocalSort + totalSimCyclesHistGen + totalSimCyclesPlacement;
+		cout << endl;
+		cout << "            Total cycles: " << totalCycles << endl;
+		cout << "       Local Sort cycles: " << totalSimCyclesLocalSort << " (" << totalSimCyclesLocalSort * 100.0 / totalCycles << " %)" << endl;
+		cout << "    Histogram gen cycles: " << totalSimCyclesHistGen << " (" << totalSimCyclesHistGen * 100.0 / totalCycles << " %)" << endl;
+		cout << "        Placement cycles: " << totalSimCyclesPlacement << " (" << totalSimCyclesPlacement * 100.0 / totalCycles << " %)" << endl;
 
 		//Check validity of output
 		//1. Merge output of subarrays
 		vector<KEY_TYPE> outData;
-		outData.reserve(numOfDataElems);
+		outData.reserve(G_NUM_OF_DATA_ELEMENTS);
 		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 			LOCAL_ADDRESS_TYPE startAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
 			LOCAL_ADDRESS_TYPE endAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR);
@@ -233,10 +273,10 @@ int main(int argc, char **argv)
 			}
 		}
 
-		assert(outData.size() == numOfDataElems);
+		assert(outData.size() == G_NUM_OF_DATA_ELEMENTS);
 
-		sort(dataArray, dataArray + numOfDataElems);
-		for(u64 i = 0; i < numOfDataElems; i++){
+		sort(dataArray, dataArray + G_NUM_OF_DATA_ELEMENTS);
+		for(u64 i = 0; i < G_NUM_OF_DATA_ELEMENTS; i++){
 			if(dataArray[i] != outData[i]){
 				cout << "[FAIL at " << i << "] expected: " << dataArray[i] << "       actual: " << outData[i] << endl;
 				return -1;
@@ -328,7 +368,7 @@ int main(int argc, char **argv)
 //		}
 //	}
 	else {
-		bool testsuccess=tstObj.runTestByTestNumber(testNumber,&confObj, &stackedMemoryObj);
+		//bool testsuccess=tstObj.runTestByTestNumber(testNumber,&confObj, &stackedMemoryObj);
 	}
 
 }
