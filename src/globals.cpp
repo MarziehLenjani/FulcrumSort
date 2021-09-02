@@ -1,6 +1,6 @@
 #include "globals.hpp"
 #include "EventQueue.hpp"
-
+#include "PacketAllocator.hpp"
 
 EventQueue eventQueue;
 u64 simCycles = 0;
@@ -19,3 +19,9 @@ KEY_TYPE* dataArray = nullptr;
 
 u64 radixStartBit = 0;
 u64 radixEndBit = 0;
+
+u64 stateCounter[16];
+u64 hopCounter = 0;
+u64 locShiftAmt = 0;
+
+PacketAllocator<PlacementPacket>* placementPacketAllocator = nullptr;

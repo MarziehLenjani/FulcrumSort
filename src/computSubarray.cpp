@@ -11,7 +11,6 @@
 #include "bank.hpp"
 #include "stackedMemory.hpp"
 #include "dataPartitioning.hpp"
-#include "dataTransfer.hpp"
 #include <cstring>
 #include "Walker.hpp"
 #include "MemoryObject.hpp"
@@ -135,10 +134,6 @@ void computSubarray::initialize(LOCAL_ADDRESS_TYPE addressOfTheReadStartAddress,
 //		 return;
 }
 
-bool computSubarray::isDestinationForDataTransfer(dataTransfer *packet) {
-	return packet->destinationID == SelfIndex;
-}
-
 void computSubarray::setMaskForBucketIDExtraction(
 		FULCRU_WORD_TYPE maskForBucketExtaction,
 		FULCRU_WORD_TYPE numberOfShiftsForBucketIDExtraction) {
@@ -147,13 +142,13 @@ void computSubarray::setMaskForBucketIDExtraction(
 }
 //TODO:To be comepleted nd tested functions
 
-std::queue <dataTransfer*>* computSubarray::getNextComputeSubArrayQ(dataTransfer *pckt) {
+std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQ(ID_TYPE dstId) {
 
 	//Alif: Now using precomputed pointers to speed up routing simulation
 	if(id == 0){
 		//Change layer if necessary
 		u64 currLayer = layerObj->id;
-		u64 destLayer = pckt->destinationID / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
+		u64 destLayer = dstId / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
 		if(currLayer == destLayer){
 			return nextSubarraySameLayerQ;	//same layer
 		}

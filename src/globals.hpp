@@ -3,6 +3,7 @@
 #include <cstdint>
 #include "types.hpp"
 #include "EventQueue.hpp"
+#include "PacketAllocator.hpp"
 #include <string>
 #include <iostream>
 
@@ -17,14 +18,14 @@
 
 #define G_NUM_TOTAL_SUBARRAY		(G_NUM_LAYERS * G_NUM_BANKS_PER_LAYER * G_NUM_SUBARRAY_PER_BANK)
 
-#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 512)
+#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 128)
 
 #define G_NUM_WORDS_IN_ROW			64
 #define G_NUM_BYTES_IN_ROW			(G_NUM_WORDS_IN_ROW * sizeof(FULCRU_WORD_TYPE))
 
 #define G_RADIX_BITS				11
 #define G_KEY_BITS					(sizeof(KEY_TYPE) * 8)
-#define G_NUM_HIST_ELEMS			256
+#define G_NUM_HIST_ELEMS			(1UL << 8)
 
 
 // Timings for modeling
@@ -35,6 +36,9 @@
 #define G_REDUCTION_PER_HIST_ELEM_CYCLES			1
 #define G_OFFSET_PER_HIST_ELEM_CYCLES				1
 
+
+
+extern u64 stateCounter[16];
 
 
 //#define G_ROW_READ_LATENCY		3
@@ -63,8 +67,8 @@
 
 
 #define PLACEMENT_QUEUE_MAX_CAPACITY		8
-#define PLACEMENT_QUEUE_HIGH_WATER_MARK		5
-#define PLACEMENT_QUEUE_LOW_WATER_MARK		2
+#define PLACEMENT_QUEUE_HIGH_WATER_MARK		2
+#define PLACEMENT_QUEUE_LOW_WATER_MARK		1
 
 
 // Global objects
@@ -81,10 +85,14 @@ extern u64 numOfProcessedSubarrays;
 extern u64 numOfInFlightPackets;
 extern u64 lastIdx;
 extern u64 reservedBytesForReadWriteArray;
+extern u64 hopCounter;
 
 extern LOCAL_ADDRESS_TYPE histStartAddr;
 extern LOCAL_ADDRESS_TYPE histEndAddr;
 extern KEY_TYPE* dataArray;
+
+extern u64 locShiftAmt;
+extern PacketAllocator<PlacementPacket>* placementPacketAllocator;
 
 
 static u64 getNextPow2(u64 val, u64 minVal) {
