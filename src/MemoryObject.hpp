@@ -4,7 +4,6 @@
 #include <cstring>
 #include <cassert>
 #include "types.hpp"
-#include "configAndStats.hpp"
 
 class MemoryObject {
 
@@ -134,8 +133,8 @@ public:
 		((HIST_ELEM_TYPE*)(data + addr))[0]++;
 	}
 
-	void decrementHist(LOCAL_ADDRESS_TYPE addr){
-		((HIST_ELEM_TYPE*)(data + addr))[0]--;
+	HIST_ELEM_TYPE decrementHist(LOCAL_ADDRESS_TYPE addr){
+		return --((HIST_ELEM_TYPE*)(data + addr))[0];
 	}
 
 };

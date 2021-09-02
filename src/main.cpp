@@ -59,6 +59,8 @@ int main(int argc, char **argv)
 		cout << "Data elements: " << G_NUM_OF_DATA_ELEMENTS << endl;
 		cout << endl << endl;
 
+		placementPacketAllocator = new PacketAllocator<PlacementPacket>(G_NUM_OF_DATA_ELEMENTS);
+
 		// Initialize known meta data
 		histStartAddr = G_NUM_BYTES_IN_ROW;		//start of 2nd row
 		histEndAddr = histStartAddr + G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE);
@@ -79,6 +81,7 @@ int main(int argc, char **argv)
 		//Reserved bytes should be a power of two, and should be aligned to a row.
 		//This is to make sure that placement location can be calculated with bitwise operations rather than division/mod.
 		reservedBytesForReadWriteArray = getNextPow2(reservedBytesForReadWriteArray, G_NUM_BYTES_IN_ROW);
+		locShiftAmt = round(log2(reservedBytesForReadWriteArray / sizeof(KEY_TYPE)));
 
 		u64 writeStartAddr = readStartAddr + reservedBytesForReadWriteArray;
 
@@ -106,6 +109,12 @@ int main(int argc, char **argv)
 //			sub->printReadElements();
 //		}
 //		cout << endl << endl;
+
+		for(u64 i = 0; i < 8; i++){
+			stateCounter[i] = 0;
+		}
+
+		u64 totWaitCyclesInQ = 0;
 
 		for(radixStartBit = 0; radixStartBit < G_KEY_BITS; radixStartBit += G_RADIX_BITS){
 			radixEndBit = min(G_KEY_BITS, radixStartBit + G_RADIX_BITS);
@@ -214,20 +223,21 @@ int main(int argc, char **argv)
 
 
 				//--------------------------------------- Placement ------------------------------------------
-				#pragma omp parallel for
+				numOfProcessedSubarrays = 0;
+				numOfInFlightPackets = 0;
+
 				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 					sub->initPlacementPerRange();
 				}
 
-				numOfProcessedSubarrays = 0;
-				numOfInFlightPackets = 0;
 				while((numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY) || (numOfInFlightPackets != 0)){
 					//#pragma omp parallel for
 					for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-						sub->runPlacementOneCycle();
+						sub->runPlacementOneCycleV2();
 					}
 					simCycles++;
 					totalSimCyclesPlacement++;
+					totWaitCyclesInQ += numOfInFlightPackets;
 				}
 				printSimCycle("\t\tFinished Placement");
 			}
@@ -260,6 +270,8 @@ int main(int argc, char **argv)
 		cout << "    Histogram gen cycles: " << totalSimCyclesHistGen << " (" << totalSimCyclesHistGen * 100.0 / totalCycles << " %)" << endl;
 		cout << "        Placement cycles: " << totalSimCyclesPlacement << " (" << totalSimCyclesPlacement * 100.0 / totalCycles << " %)" << endl;
 
+		delete placementPacketAllocator;
+
 		//Check validity of output
 		//1. Merge output of subarrays
 		vector<KEY_TYPE> outData;
@@ -282,6 +294,15 @@ int main(int argc, char **argv)
 				return -1;
 			}
 		}
+
+		cout << "State counters: " << endl;
+		for(u64 i = 0; i < 8; i++){
+			cout << stateCounter[i] * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
+		}
+
+		cout << endl << "Average hop count: " << hopCounter * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
+		cout << endl << "Average wait cycles in Q: " << totWaitCyclesInQ * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
+
 		cout << "[VALIDITY CHECK PASSED]" << endl;
 	}
 //	else if(testNumber==(CONF_TEST_NUMBER_TYPE)1){

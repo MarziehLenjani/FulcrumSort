@@ -72,9 +72,11 @@ template <typename T1, typename T2> T2 castNoLoss(T1 tmpUnsign){
 	memcpy(&newT, &tmpUnsign, sizeof(T2));
 	return newT;
 };
-//int castNoLoss(float);
 
-
+typedef struct{
+	KEY_TYPE key;
+	LOCAL_ADDRESS_TYPE offset;
+} PlacementPacket;
 
 
 
