@@ -18,14 +18,14 @@
 
 #define G_NUM_TOTAL_SUBARRAY		(G_NUM_LAYERS * G_NUM_BANKS_PER_LAYER * G_NUM_SUBARRAY_PER_BANK)
 
-#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 128)
+//#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 1024)
 
 #define G_NUM_WORDS_IN_ROW			64
 #define G_NUM_BYTES_IN_ROW			(G_NUM_WORDS_IN_ROW * sizeof(FULCRU_WORD_TYPE))
 
 #define G_RADIX_BITS				11
 #define G_KEY_BITS					(sizeof(KEY_TYPE) * 8)
-#define G_NUM_HIST_ELEMS			(1UL << 8)
+#define G_NUM_HIST_ELEMS			(1UL << 11)
 
 
 // Timings for modeling
@@ -67,8 +67,8 @@ extern u64 stateCounter[16];
 
 
 #define PLACEMENT_QUEUE_MAX_CAPACITY		8
-#define PLACEMENT_QUEUE_HIGH_WATER_MARK		2
-#define PLACEMENT_QUEUE_LOW_WATER_MARK		1
+#define PLACEMENT_QUEUE_HIGH_WATER_MARK		7
+#define PLACEMENT_QUEUE_LOW_WATER_MARK		2
 
 
 // Global objects
@@ -94,6 +94,14 @@ extern KEY_TYPE* dataArray;
 extern u64 locShiftAmt;
 extern PacketAllocator<PlacementPacket>* placementPacketAllocator;
 
+extern u64 placementRowHit;
+extern u64 placementRowMiss;
+
+extern u64 maxQueueLoad;
+extern u64 producedPackets;
+
+extern bool dragonEdges[64][64];
+extern u8 dragonNextDst[64][64];
 
 static u64 getNextPow2(u64 val, u64 minVal) {
 	if(val <= minVal){

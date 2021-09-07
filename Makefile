@@ -22,10 +22,10 @@ testEcdcho:
 	echo $(SRC_DIR)
 
 $(EXE_FILE_NAME): $(OBJ_FILES) 
-	g++ -o $@ $^  $(LDFLAGS) -fopenmp -O3
+	g++ -o $@ $^  $(LDFLAGS) -O3
 	
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(HEADER_FILES)
-	g++ $(CPPFLAGS)  $(CXXFLAGS) $(EXTRA_COMPILE_OPTIONS) $(CONFIGURATION_COMPILE_OPTIONS) -fmax-errors=5 -fopenmp -c -o $@ $<
+	g++ $(CPPFLAGS)  $(CXXFLAGS) $(EXTRA_COMPILE_OPTIONS) $(CONFIGURATION_COMPILE_OPTIONS) -fmax-errors=5 -c -o $@ $<
 build: $(EXE_FILE_NAME)
 ########################Main program 
 #to run any test type this 

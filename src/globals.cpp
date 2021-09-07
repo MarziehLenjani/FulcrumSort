@@ -25,3 +25,12 @@ u64 hopCounter = 0;
 u64 locShiftAmt = 0;
 
 PacketAllocator<PlacementPacket>* placementPacketAllocator = nullptr;
+
+u64 placementRowHit = 0;
+u64 placementRowMiss = 0;
+
+u64 maxQueueLoad = 0;
+u64 producedPackets = 0;
+
+bool dragonEdges[64][64];
+u8 dragonNextDst[64][64];

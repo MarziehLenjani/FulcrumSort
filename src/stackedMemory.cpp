@@ -22,7 +22,9 @@ stackedMemory::stackedMemory(ID_TYPE l_id, physicalComponent * l_firstDimOwner, 
 			for (ID_TYPE k=0; k < G_NUM_SUBARRAY_PER_BANK; k++){
 				computSubarray* sub = layerVector[i]->bankVector[j]->computSubarrayVector[k];
 				computSubarrayVector.push_back(sub); //TODO: assign right values for the second and third dimensions
-				sub->initNextSubarray();
+				//sub->initNextSubarraySemiRing();
+				//sub->initNextSubarrayCrossbar();
+				sub->initNextSubarrayDragonfly();
 			}
 		}
 	}

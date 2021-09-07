@@ -142,7 +142,7 @@ void computSubarray::setMaskForBucketIDExtraction(
 }
 //TODO:To be comepleted nd tested functions
 
-std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQ(ID_TYPE dstId) {
+std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQRing(ID_TYPE dstId) {
 
 	//Alif: Now using precomputed pointers to speed up routing simulation
 	if(id == 0){
@@ -164,79 +164,140 @@ std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQ(I
 	else{
 		return nextSubarraySameLayerQ;
 	}
-
-//	computSubarray *nextSubArray = NULL;
-//	layer *nextLayer = NULL;
-//	// we have ring per two vaults, where the lowest layer has ID of 0, every two banks are connected to the same vault, so every four banks are part of a ring
-//
-//	if ((bankObj->id % 4) < 2) { //even vaults send upwards
-//		if (layerObj->id < (G_NUM_LAYERS - 1)) {
-//			nextLayer = stackedMemoryObj->layerVector[layerObj->id + 1];
-//		} else {
-//			nextLayer = stackedMemoryObj->layerVector[layerObj->id - 1];
-//		}
-//	} else { //odd vaults send  downward
-//		if (layerObj->id > 0) {
-//			nextLayer = stackedMemoryObj->layerVector[layerObj->id - 1];
-//		} else {
-//			nextLayer = stackedMemoryObj->layerVector[layerObj->id + 1];
-//		}
-//	}
-//	bank *nextBank = NULL;
-//
-//	if (bankObj->id != (G_NUM_BANKS_PER_LAYER - 1)) {
-//		nextBank = layerObj->bankVector[bankObj->id + 1];
-//	} else {
-//		nextBank = layerObj->bankVector[0];
-//	}
-//	//we have a ring per layer, where the lowest subarray has ID of 0, even banks direct packets upward
-//	bool sameLayer = true;
-//	if (id == 0) { //subarray zero always decides if the same layer
-//		FULCRU_WORD_TYPE firstIndexInLayer = layerObj->bankVector[0]->computSubarrayVector[0]->SelfIndex;
-//		FULCRU_WORD_TYPE lastIndexInLayer =	layerObj->bankVector[G_NUM_BANKS_PER_LAYER - 1]->computSubarrayVector[G_NUM_SUBARRAY_PER_BANK - 1]->SelfIndex;
-//		if (firstIndexInLayer < lastIndexInLayer) {
-//			if (pckt->destinationID >= firstIndexInLayer && pckt->destinationID <= lastIndexInLayer) {
-//				sameLayer = true;
-//			} else {
-//				sameLayer = false;
-//
-//			}
-//		} else {
-//
-//			if (pckt->destinationID >= firstIndexInLayer || pckt->destinationID <= lastIndexInLayer) {
-//				sameLayer = true;
-//			} else {
-//				sameLayer = false;
-//
-//			}
-//		}
-//
-//	}
-//
-//	if (sameLayer) {
-//		if (bankObj->id % 2 == 0) { //even bank, directing upward
-//			if (id != (G_NUM_SUBARRAY_PER_BANK - 1)) {
-//				nextSubArray = bankObj->computSubarrayVector[id + 1];
-//			} else {
-//				nextSubArray =	nextBank->computSubarrayVector[G_NUM_SUBARRAY_PER_BANK - 1];
-//
-//			}
-//		} else {
-//			if (id != 0) { // odd bank directing downward
-//				nextSubArray = bankObj->computSubarrayVector[id - 1];
-//			} else {
-//				nextSubArray = nextBank->computSubarrayVector[0];
-//			}
-//
-//		}
-//	} else {
-//		nextSubArray = nextLayer->bankVector[bankObj->id]->computSubarrayVector[0];
-//	}
-//
-//	return nextSubArray;
 }
 
-void computSubarray::initNextSubarray(){
+std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQSemiRing(ID_TYPE dstId) {
+	if(id == 0){
+		u64 currBank = bankObj->id;
+		u64 destBank = (dstId / G_NUM_SUBARRAY_PER_BANK) % G_NUM_BANKS_PER_LAYER;
+
+		if(currBank != destBank){
+			//go to next bank
+			const u64 nextBank = (currBank + 1) % G_NUM_BANKS_PER_LAYER;
+			return &(layerObj->bankVector[nextBank]->computSubarrayVector[0]->incomingPackets);
+		}
+
+		u64 currLayer = layerObj->id;
+		u64 destLayer = dstId / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
+
+		if(currLayer < destLayer){
+			//go up
+			return nextSubarrayUpLayerQ;
+		}
+		else if(currLayer > destLayer){
+			//go down
+			return nextSubarrayDownLayerQ;
+		}
+	}
+
+	//if correct bank correct layer, go towards dest subarray, otherwise, go towards subarray 0
+	if((SelfIndex / G_NUM_SUBARRAY_PER_BANK) == (dstId / G_NUM_SUBARRAY_PER_BANK)){
+		if(SelfIndex > dstId){
+			return &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
+		}
+		else{
+			return &(bankObj->computSubarrayVector[id + 1]->incomingPackets);
+		}
+	}
+	else{
+		return &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
+	}
+}
+
+
+std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQIdeal(ID_TYPE dstId) {
+	return &stackedMemoryObj->computSubarrayVector[dstId]->incomingPackets;
+}
+
+std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQCrossbar(ID_TYPE dstId) {
+	//if correct bank correct layer, go towards dest subarray
+	if((SelfIndex / G_NUM_SUBARRAY_PER_BANK) == (dstId / G_NUM_SUBARRAY_PER_BANK)){
+		if(SelfIndex > dstId){
+			return &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
+		}
+		else{
+			return &(bankObj->computSubarrayVector[id + 1]->incomingPackets);
+		}
+	}
+
+	if(id == 0){
+		u64 currBank = bankObj->id;
+		u64 destBank = (dstId / G_NUM_SUBARRAY_PER_BANK) % G_NUM_BANKS_PER_LAYER;
+		if(currBank != destBank){
+			//go towards logic layer
+			if(layerObj->id == 0){
+				//reached layer 0, do crossbar magic
+				//TODO: Add logic layer, instead of forwarding from layer 0
+				return &(layerObj->bankVector[destBank]->computSubarrayVector[0]->incomingPackets);
+			}
+			else{
+				return nextSubarrayDownLayerQ;
+			}
+		}
+		else{
+			//correct bank, go towards correct layer
+			u64 currLayer = layerObj->id;
+			u64 destLayer = dstId / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
+
+			if(currLayer < destLayer){
+				//go up
+				return nextSubarrayUpLayerQ;
+			}
+			else if(currLayer > destLayer){
+				//go down
+				return nextSubarrayDownLayerQ;
+			}
+		}
+	}
+	else{
+		//towards subarray 0
+		return &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
+	}
+}
+
+
+std::queue <Packet<PlacementPacket>*>* computSubarray::getNextComputeSubArrayQDragonfly(ID_TYPE dstId) {
+	//if correct bank correct layer, go towards dest subarray
+	if((SelfIndex / G_NUM_SUBARRAY_PER_BANK) == (dstId / G_NUM_SUBARRAY_PER_BANK)){
+		if(SelfIndex > dstId){
+			return &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
+		}
+		else{
+			return &(bankObj->computSubarrayVector[id + 1]->incomingPackets);
+		}
+	}
+
+	if(id == 0){
+		u64 currBank = bankObj->id;
+		u64 destBank = (dstId / G_NUM_SUBARRAY_PER_BANK) % G_NUM_BANKS_PER_LAYER;
+
+		if(currBank != destBank){
+			u64 nextBank = dragonNextDst[currBank][destBank];
+			return &(layerObj->bankVector[nextBank]->computSubarrayVector[0]->incomingPackets);
+		}
+		else{
+			//correct bank, go towards correct layer
+			u64 currLayer = layerObj->id;
+			u64 destLayer = dstId / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
+
+			if(currLayer < destLayer){
+				//go up
+				return nextSubarrayUpLayerQ;
+			}
+			else if(currLayer > destLayer){
+				//go down
+				return nextSubarrayDownLayerQ;
+			}
+		}
+	}
+	else{
+		//towards subarray 0
+		return &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
+	}
+}
+
+
+void computSubarray::initNextSubarrayRing(){
 	//Pre compute the next subarray packet queue pointer if routing within the same layer
 	bank *nextBank = NULL;
 	if (bankObj->id != (G_NUM_BANKS_PER_LAYER - 1)) {
@@ -275,6 +336,73 @@ void computSubarray::initNextSubarray(){
 	}
 }
 
+
+void computSubarray::initNextSubarraySemiRing(){
+	//Pre compute the next subarray packet queue pointer if routing within the same layer
+	if(id == 0){
+		u64 currLayer = layerObj->id;
+		u64 currBank = bankObj->id;
+
+
+		//pre compute the down layer's connecting subarray
+		if(currLayer != 0){
+			nextSubarrayDownLayerQ = &(stackedMemoryObj->layerVector[currLayer - 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
+		}
+
+		if(currLayer != (G_NUM_LAYERS - 1)){
+			nextSubarrayUpLayerQ = &(stackedMemoryObj->layerVector[currLayer + 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
+		}
+
+		//Next bank's subarray 0
+		bank *nextBank = NULL;
+		if (bankObj->id != (G_NUM_BANKS_PER_LAYER - 1)) {
+			nextBank = layerObj->bankVector[bankObj->id + 1];
+		} else {
+			nextBank = layerObj->bankVector[0];
+		}
+		nextSubarraySameLayerQ = &(nextBank->computSubarrayVector[0]->incomingPackets);
+	}
+	else{
+		//send packet towards subarray 0 of the same bank
+		nextSubarraySameLayerQ = &(bankObj->computSubarrayVector[id - 1]->incomingPackets);
+	}
+}
+
+void computSubarray::initNextSubarrayCrossbar(){
+	if(id == 0){
+		u64 currLayer = layerObj->id;
+		u64 currBank = bankObj->id;
+
+
+		//pre compute the down layer's connecting subarray
+		if(currLayer != 0){
+			nextSubarrayDownLayerQ = &(stackedMemoryObj->layerVector[currLayer - 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
+		}
+
+		if(currLayer != (G_NUM_LAYERS - 1)){
+			nextSubarrayUpLayerQ = &(stackedMemoryObj->layerVector[currLayer + 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
+		}
+	}
+}
+
+void computSubarray::initNextSubarrayDragonfly(){
+	assert(G_NUM_BANKS_PER_LAYER == 64);
+	if(id == 0){
+		u64 currLayer = layerObj->id;
+		u64 currBank = bankObj->id;
+
+
+		//pre compute the down layer's connecting subarray
+		if(currLayer != 0){
+			nextSubarrayDownLayerQ = &(stackedMemoryObj->layerVector[currLayer - 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
+		}
+
+		if(currLayer != (G_NUM_LAYERS - 1)){
+			nextSubarrayUpLayerQ = &(stackedMemoryObj->layerVector[currLayer + 1]->bankVector[currBank]->computSubarrayVector[0]->incomingPackets);
+		}
+	}
+}
+
 //--------------To be implemented functions
 void computSubarray::openANewSubBucket() {
 	// TODO: implement this function
@@ -294,237 +422,6 @@ FULCRU_WORD_TYPE computSubarray::extractBits(FULCRU_WORD_TYPE val,
 	return (val >> lowBitPos) & mask;
 }
 
-//void computSubarray::initializeHistGenGlobal(){
-//	memset(hist, 0, G_NUM_BINS * sizeof(Histogram));
-//	readEnded = false;
-//
-//	LOCAL_ADDRESS_TYPE tempValueForRead;
-//
-//	memoryArrayObj->read(G_ADDRESS_OF_START_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
-//	readStartAddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
-//
-//
-//	memoryArrayObj->read(G_ADDRESS_OF_END_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
-//	readEndAdddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
-//
-//	//writeStartAddress = readEndAdddress;	// For now, write starts just after the read portion
-//
-//	readAddressCounter = readStartAddress;
-//	//writeAddressCounter = writeStartAddress;
-//
-//	nwrdsInRow=confObj->getConfig<CONF_NUMBER_OF_WORDS_IN_A_ROW_TYPE>(CONF_NUMBER_OF_WORDS_IN_A_ROW_NAME);
-//	rowCycleInSubClockCycle= confObj->getConfig<CONF_ROW_CYCLE_IN_SUB_CLOCK_CYCLE_TYPE>(CONF_ROW_CYCLE_IN_SUB_CLOCK_CYCLE_NAME);
-//}
-
-//bool computSubarray::isProceedRead(){
-//	if(readEnded){
-//		return false;
-//	}
-//	bool proceedRead=false;
-//	if(readAddressCounter%nwrdsInRow !=0 ){
-//		proceedRead=true;
-//	}else{
-//		if(writeWaitCounter==0){
-//			readWaitCounter++;
-//		}
-//		if(readWaitCounter==rowCycleInSubClockCycle){
-//			readWaitCounter=0;
-//			proceedRead=true;
-//		}
-//	}
-//	return proceedRead;
-//}
-//
-//bool computSubarray::isProceedWrite(){
-//	bool proceedWrite = false;
-//	if(writeAddressCounter%nwrdsInRow !=0 ){
-//		proceedWrite=true;
-//	}else{
-//		if(readWaitCounter==0){
-//			writeWaitCounter++;
-//		}
-//		if(writeWaitCounter==rowCycleInSubClockCycle){
-//			writeWaitCounter=0;
-//			proceedWrite=true;
-//		}
-//	}
-//	return proceedWrite;
-//}
-
-//void computSubarray::runHistGenGlobalOneClockCycle(){
-//	if(isProceedRead()){
-//		LOCAL_ADDRESS_TYPE currentReadValue;
-//		memoryArrayObj->read(readAddressCounter, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(currentReadValue));
-//
-//		FULCRU_WORD_TYPE dstSubForBin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray - 1, 0);
-//		FULCRU_WORD_TYPE bin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray + G_LOG_NUM_BINS, stackedMemoryObj->logTotSubarray);
-//
-//		dataTransfer* tmpPacket=new dataTransfer(sizeof(FULCRU_WORD_TYPE), dstSubForBin, (READ_DATA_TYPE_IN_MEMORY_ARRAY*) &bin);
-//		incomingPackets.push(tmpPacket);
-//
-//		readAddressCounter += sizeof(FULCRU_WORD_TYPE);
-//		if(readAddressCounter == readEndAdddress){
-//			readEnded = true;
-//		}
-//	}
-//
-//	if(isProceedWrite()){
-//		//TODO: get the packet
-//		//write it in the subarray
-//		//delete the packet
-//		if(incomingPackets.size()>0){
-//			dataTransfer* tmpPacket=incomingPackets.front();
-//			incomingPackets.pop();
-//
-//			if(isDestinationForDataTransfer(tmpPacket)){
-//
-//				// Will do read-modify-write based on the payload (the payload contains the bin)
-//				FULCRU_WORD_TYPE bin = *(tmpPacket->payload);
-//				hist[bin].cnt++;
-//
-//				delete tmpPacket;
-//			}else{
-//				auto nextSubArray=getNextComputeSubArray(tmpPacket);
-//				nextSubArray->incomingPackets.push(tmpPacket);
-//
-//			}
-//		}
-//	}
-//}
-
-//void computSubarray::initializePrefixSumWithinArrayGlobal(){
-//	readEnded = false;
-//
-//	//TODO: move hist to memory object
-//	readStartAddress = 1;		//Not 0, as we need to access Hist[][bin-1]
-//	readEndAdddress = G_NUM_BINS;
-//	readAddressCounter = readStartAddress;
-//}
-
-//void computSubarray::runPrefixSumWithinArrayGlobalOneClockCycle(){
-//	if(isProceedRead()){
-//		hist[readAddressCounter].cnt += hist[readAddressCounter-1].cnt;
-//		readAddressCounter++;
-//
-//		if(readAddressCounter == readEndAdddress){
-//			readEnded = true;
-//		}
-//	}
-//
-//	if(isProceedWrite()){
-//		//TODO: Anything to do here?
-//	}
-//}
-//
-//void computSubarray::initializePrefixSumNextArrayGlobal(){
-//	readEnded = false;
-//
-//	//TODO: move hist to memory object
-//	//Go from NUM_BINS -> 0 to make the prefix sum available early
-//	readStartAddress = G_NUM_BINS-1;
-//	readEndAdddress = 0;
-//	readAddressCounter = readStartAddress;
-//
-//	isSumAvailable = false;
-//	prefixSumOfLastSubarray = 0xDEADBEEF;		// Set to an odd value to detect if used pre-maturely
-//	if(SelfIndex == 0){
-//		isSumAvailable = true;
-//		prefixSumOfLastSubarray = 0;
-//	}
-//}
-//
-//void computSubarray::runPrefixSumNextArrayGlobalOneClockCycle(){
-//	if(isProceedRead() && isSumAvailable){
-//		hist[readAddressCounter].cnt += prefixSumOfLastSubarray;
-//		if((readAddressCounter == (G_NUM_BINS - 1)) && (SelfIndex != (stackedMemoryObj->totNumComputeSubarray - 1))){
-//			//propagate value to next subarray
-//			dataTransfer* tmpPacket=new dataTransfer(sizeof(FULCRU_WORD_TYPE), SelfIndex + 1, (READ_DATA_TYPE_IN_MEMORY_ARRAY*) &hist[readAddressCounter].cnt);
-//			incomingPackets.push(tmpPacket);
-//		}
-//		if(readAddressCounter == readEndAdddress){
-//			readEnded = true;
-//		}
-//		readAddressCounter--;
-//	}
-//
-//	if(isProceedWrite()){
-//		if(incomingPackets.size()>0){
-//			dataTransfer* tmpPacket=incomingPackets.front();
-//			incomingPackets.pop();
-//
-//			if(isDestinationForDataTransfer(tmpPacket)){
-//				prefixSumOfLastSubarray = *(tmpPacket->payload);
-//				isSumAvailable = true;
-//
-//				delete tmpPacket;
-//			}else{
-//				auto nextSubArray=getNextComputeSubArray(tmpPacket);
-//				nextSubArray->incomingPackets.push(tmpPacket);
-//
-//			}
-//		}
-//	}
-//}
-//
-//void computSubarray::initializePlacementGlobal(){
-//	readEnded = false;
-//
-//	LOCAL_ADDRESS_TYPE tempValueForRead;
-//
-//	memoryArrayObj->read(G_ADDRESS_OF_START_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
-//	readStartAddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
-//
-//
-//	memoryArrayObj->read(G_ADDRESS_OF_END_ADDRESS, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(tempValueForRead));
-//	readEndAdddress = stackedMemoryObj->dataPartitioningObj->metadatatoLocalAddress (tempValueForRead);
-//
-//	writeStartAddress = readEndAdddress;	// For now, write starts just after the read portion
-//
-//	readAddressCounter = readStartAddress;
-//	//writeAddressCounter = writeStartAddress;
-//}
-//
-//void computSubarray::runPlacementGlobalOneClockCycle(){
-//	if(isProceedRead()){
-//		LOCAL_ADDRESS_TYPE currentReadValue;
-//		memoryArrayObj->read(readAddressCounter, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(currentReadValue));
-//
-//		FULCRU_WORD_TYPE dstSubForBin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray - 1, 0);
-//		//FULCRU_WORD_TYPE bin = extractBits(currentReadValue, stackedMemoryObj->logTotSubarray + LOG_NUM_BINS, stackedMemoryObj->logTotSubarray);
-//
-//		//send key
-//		dataTransfer* tmpPacket=new dataTransfer(sizeof(FULCRU_WORD_TYPE), dstSubForBin, (READ_DATA_TYPE_IN_MEMORY_ARRAY*) &currentReadValue);
-//		incomingPackets.push(tmpPacket);
-//
-//		readAddressCounter += sizeof(FULCRU_WORD_TYPE);
-//		if(readAddressCounter == readEndAdddress){
-//			readEnded = true;
-//		}
-//	}
-//
-//	if(isProceedWrite()){
-//		if(incomingPackets.size()>0){
-//			dataTransfer* tmpPacket=incomingPackets.front();
-//			incomingPackets.pop();
-//
-//			if(isDestinationForDataTransfer(tmpPacket)){
-//				FULCRU_WORD_TYPE key = *(tmpPacket->payload);
-//
-//				FULCRU_WORD_TYPE bin = extractBits(key, stackedMemoryObj->logTotSubarray + G_LOG_NUM_BINS, stackedMemoryObj->logTotSubarray);
-//
-//				LOCAL_ADDRESS_TYPE location = writeStartAddress + (hist[bin].cnt + hist[bin].used) * sizeof(LOCAL_ADDRESS_TYPE);
-//				hist[bin].used++;
-//
-//				memoryArrayObj->write(location, sizeof(FULCRU_WORD_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(key));
-//
-//				delete tmpPacket;
-//			}else{
-//				auto nextSubArray=getNextComputeSubArray(tmpPacket);
-//				nextSubArray->incomingPackets.push(tmpPacket);
-//			}
-//		}
-//	}
-//}
 
 template<typename T>
 void computSubarray::printMem(LOCAL_ADDRESS_TYPE startAddr,

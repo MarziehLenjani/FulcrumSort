@@ -8,22 +8,26 @@
 #include "computSubarray.hpp"
 #include <math.h>
 #include <cassert>
-#include "omp.h"
+#include <algorithm>
+#include <random>
 
 using namespace std;
+
+void initDragonfly();
 
 //#ifdef USE_THE_MAIN_MAIN
 int main(int argc, char **argv)
 {
-//	if(argc != 2){
-//		cout << "usage: <elem_per_subarray>" << endl;
-//		exit(-1);
-//	}
-//
-//	u64 G_NUM_OF_DATA_ELEMENTS = atol(argv[1]) * G_NUM_TOTAL_SUBARRAY;
+	if(argc != 2){
+		cout << "usage: <elem_per_subarray>" << endl;
+		exit(-1);
+	}
+
+	u64 G_NUM_OF_DATA_ELEMENTS = atol(argv[1]) * G_NUM_TOTAL_SUBARRAY;
 
 	u64 totalSimCyclesLocalSort = 0;
 	u64 totalSimCyclesHistGen = 0;
+	u64 totalSimCyclesPrePlacement = 0;
 	u64 totalSimCyclesPlacement = 0;
 	u64 currStepCycles = 0;
     long long int c=0;
@@ -37,13 +41,13 @@ int main(int argc, char **argv)
 
 	//----------------
 	CONF_TEST_NUMBER_TYPE testNumber = 0;
-	//std::cout<<"testNumber is "<<testNumber<<std::endl;
+	initDragonfly();
 
 	if(testNumber==(CONF_TEST_NUMBER_TYPE)0){
 		int maxNumClockCycle=100000;
 
 		int minRand = 0;
-		int maxRand = 0x8FFFFFFF;
+		int maxRand = ((1UL << G_KEY_BITS) - 1);
 		int seed = 56;
 
 		bool writeMetadat=true;
@@ -91,7 +95,6 @@ int main(int argc, char **argv)
 		//check if the end of write array fits within the subarray
 		assert((writeStartAddr + reservedBytesForReadWriteArray) <=	G_SIZE_OF_SUBARRAY_IN_BYTE);
 
-		#pragma omp parallel for
 		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_START_ADDR, histStartAddr);
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_END_ADDR, histEndAddr);
@@ -131,7 +134,6 @@ int main(int argc, char **argv)
 			radixSortMask = radixSortMask = (1UL << radixEndBit) - (1UL << radixSortShift);
 
 			// Only approximately model local sort time
-			#pragma omp parallel for
 			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 				sub->runLocalRadixSort();
 				//sub->printReadElements();
@@ -142,7 +144,6 @@ int main(int argc, char **argv)
 			printSimCycle("\tFinished local sort");
 
 			// Initialization that are needed only once per radix bits
-			#pragma omp parallel for
 			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 				sub->initPerRadix();
 			}
@@ -161,7 +162,6 @@ int main(int argc, char **argv)
 //
 //				numOfProcessedSubarrays = 0;
 //				while(numOfProcessedSubarrays != stackedMemoryObj.totNumComputeSubarray){
-//					//#pragma omp parallel for
 //					for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 //						sub->runLocalHistOneCycle();
 //					}
@@ -208,7 +208,6 @@ int main(int argc, char **argv)
 				lastIdx = prefixSum[G_NUM_HIST_ELEMS - 1] + lastSubHist[G_NUM_HIST_ELEMS - 1];
 
 				//Add offset to get final location
-				#pragma omp parallel for
 				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 					HIST_ELEM_TYPE* histArray = (HIST_ELEM_TYPE*)(sub->memoryArrayObj->data + histStartAddr);
 					for(u64 i = 0; i < G_NUM_HIST_ELEMS; i++){
@@ -222,31 +221,52 @@ int main(int argc, char **argv)
 				printSimCycle("\t\tFinished reducing histogram");
 
 
-				//--------------------------------------- Placement ------------------------------------------
+				//--------------------------------------- Pre-placement ------------------------------------------
+//				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+//					sub->printReadElements();
+//				}
 				numOfProcessedSubarrays = 0;
 				numOfInFlightPackets = 0;
+				producedPackets = 0;
 
 				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-					sub->initPlacementPerRange();
+					sub->initPrePlacementPerRange();
 				}
 
 				while((numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY) || (numOfInFlightPackets != 0)){
-					//#pragma omp parallel for
 					for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-						sub->runPlacementOneCycleV2();
+						sub->runPrePlacementConsumerOneCycle();
+						sub->runPrePlacementProducerOneCycle();
 					}
 					simCycles++;
-					totalSimCyclesPlacement++;
+					totalSimCyclesPrePlacement++;
 					totWaitCyclesInQ += numOfInFlightPackets;
 				}
-				printSimCycle("\t\tFinished Placement");
+				//cout << "Produced packets: " << producedPackets << endl;
+				printSimCycle("\t\tFinished Pre-placement");
 			}
+
+			//--------------------------------------- Placement ------------------------------------------
+			numOfProcessedSubarrays = 0;
+			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+				sub->initPlacementPerRadix();
+			}
+
+			while(numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY){
+				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+					sub->runPlacementOneCycle();
+				}
+				simCycles++;
+				totalSimCyclesPlacement++;
+			}
+			printSimCycle("\t\tFinished Placement");
+
 
 			//Prepare for next radix
 			//swap src and dst arrays
-			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-				sub->swapReadWriteArray();
-			}
+			//for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+			//	sub->swapReadWriteArray();
+			//}
 			lastIdx = 0;
 
 //			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
@@ -263,11 +283,12 @@ int main(int argc, char **argv)
 //		}
 
 		printSimCycle("FINISHED!");
-		u64 totalCycles = totalSimCyclesLocalSort + totalSimCyclesHistGen + totalSimCyclesPlacement;
+		u64 totalCycles = totalSimCyclesLocalSort + totalSimCyclesHistGen + totalSimCyclesPrePlacement + totalSimCyclesPlacement;
 		cout << endl;
 		cout << "            Total cycles: " << totalCycles << endl;
 		cout << "       Local Sort cycles: " << totalSimCyclesLocalSort << " (" << totalSimCyclesLocalSort * 100.0 / totalCycles << " %)" << endl;
 		cout << "    Histogram gen cycles: " << totalSimCyclesHistGen << " (" << totalSimCyclesHistGen * 100.0 / totalCycles << " %)" << endl;
+		cout << "    Pre-palcement cycles: " << totalSimCyclesPrePlacement << " (" << totalSimCyclesPrePlacement * 100.0 / totalCycles << " %)" << endl;
 		cout << "        Placement cycles: " << totalSimCyclesPlacement << " (" << totalSimCyclesPlacement * 100.0 / totalCycles << " %)" << endl;
 
 		delete placementPacketAllocator;
@@ -302,6 +323,12 @@ int main(int argc, char **argv)
 
 		cout << endl << "Average hop count: " << hopCounter * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
 		cout << endl << "Average wait cycles in Q: " << totWaitCyclesInQ * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
+
+		//cout << endl << "Placement row accesses: " << placementRowMiss + placementRowHit << endl;
+		cout << endl << "Placement row hits: " << placementRowHit - placementRowMiss << endl;
+		cout << "Placement row misses: " << placementRowMiss << endl;
+
+		cout << endl << "Max queue size: " << maxQueueLoad << endl;
 
 		cout << "[VALIDITY CHECK PASSED]" << endl;
 	}
@@ -393,4 +420,123 @@ int main(int argc, char **argv)
 	}
 
 }
+
+
+
+
+static void addEdge(u64 a, u64 b){
+	dragonEdges[a][b] = true;
+	dragonEdges[b][a] = true;
+}
+
+void buildNextDst(u64 src){
+
+
+	u64 len[64];
+	for(u64 i = 0; i < 64; i++){
+		len[i] = 100000;
+	}
+
+	len[src] = 0;
+
+	vector<u64> firstHops;
+
+	for(u64 i = 0; i < 64; i++){
+		if(dragonEdges[src][i]){
+			firstHops.push_back(i);
+			len[i] = 1;
+			dragonNextDst[src][i] = i;
+		}
+	}
+
+	shuffle(firstHops.begin(), firstHops.end(), default_random_engine(42));
+
+	for(u64 fHop : firstHops){
+		queue<u64> q;
+		q.push(fHop);
+
+		while(!q.empty()){
+			u64 a = q.front();
+			q.pop();
+			const u64 nextLen = len[a] + 1;
+			for(u64 b = 0; b < 64; b++){
+				if(dragonEdges[a][b]){
+					if(len[b] > nextLen){
+						len[b] = nextLen;
+						q.push(b);
+						dragonNextDst[src][b] = fHop;
+					}
+				}
+			}
+		}
+	}
+}
+
+void buildNextDstAll(){
+	for(u64 i = 0; i < 64; i++){
+		buildNextDst(i);
+	}
+}
+
+
+void initDragonfly(){
+	if(G_NUM_BANKS_PER_LAYER == 64){
+		for(u64 i = 0; i < 64; i++){
+			for(u64 j = 0; j < 64; j++){
+				dragonEdges[i][j] = false;
+				dragonNextDst[i][j] = -1;
+			}
+		}
+
+		for(u64 i = 0; i < 64; i++){
+			if((i % 4) == 0){
+				addEdge(i, i + 1);
+				addEdge(i, i + 2);
+				addEdge(i, i + 3);
+			}
+			if((i % 4) == 1){
+				addEdge(i, i + 1);
+				addEdge(i, i + 2);
+			}
+			if((i % 4) == 2){
+				addEdge(i, i + 1);
+			}
+
+			if((i % 16) == 1){
+				addEdge(i, i + 3);
+			}
+
+			if((i % 16) == 2){
+				addEdge(i, i + 6);
+			}
+
+			if((i % 16) == 11){
+				addEdge(i, i + 3);
+			}
+
+			if((i % 16) == 7){
+				addEdge(i, i + 6);
+			}
+
+			if((i % 16) == 3){
+				addEdge(i, i + 9);
+			}
+
+			if((i % 16) == 6){
+				addEdge(i, i + 3);
+			}
+		}
+
+		addEdge(5, 16);
+		addEdge(10, 32);
+		addEdge(15, 48);
+		addEdge(26, 37);
+		addEdge(31, 53);
+		addEdge(47, 58);
+
+		//printDot("graph.dot");
+		buildNextDstAll();
+	}
+}
+
 //#endif

@@ -67,7 +67,12 @@ public:
 	u64 currOpenRow = -1;
 
 
-	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQ(ID_TYPE dstId);
+	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQIdeal(ID_TYPE dstId);
+	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQRing(ID_TYPE dstId);
+	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQSemiRing(ID_TYPE dstId);
+	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQCrossbar(ID_TYPE dstId);
+	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQDragonfly(ID_TYPE dstId);
+
 
 	//--------------To be implemented functions
 	void openANewSubBucket();
@@ -79,19 +84,11 @@ public:
 	bool isProceedRead();
 	bool isProceedWrite();
 
-	void initNextSubarray();
+	void initNextSubarrayRing();
+	void initNextSubarraySemiRing();
+	void initNextSubarrayCrossbar();
+	void initNextSubarrayDragonfly();
 
-//	void initializeHistGenGlobal();
-//	void runHistGenGlobalOneClockCycle();
-//
-//	void initializePrefixSumWithinArrayGlobal();
-//	void runPrefixSumWithinArrayGlobalOneClockCycle();
-//
-//	void initializePrefixSumNextArrayGlobal();
-//	void runPrefixSumNextArrayGlobalOneClockCycle();
-//
-//	void initializePlacementGlobal();
-//	void runPlacementGlobalOneClockCycle();
 
 	template <typename T>
 	void writeData(u64 baseAddr, u64 index, const T& val){
@@ -115,90 +112,8 @@ public:
 	void printHist();
 	void printHist(u64 maxElems);
 
-//	void initializeLocalSort();
-//	void runLocalSortOneClockCycle();
-
-//	static void eventRunLocalSort(void* obj, void* arg);
-
-
-//	void initLocalRadixSort(){
-//
-//	}
-
-//	typedef enum {
-//		RR_READ,
-//		RR_WRITE
-//	} RowRequestType;
-
-	typedef struct {
-		Walker* walker;
-		//RowRequestType reqType;
-		u64 rowIndex;
-	} RowRequestInfo;
-
-	std::queue<RowRequestInfo> pendingRowAccessQ;
-
-	bool scheduleRowAccess(u64 rowIndex, Walker* walker){ //, RowRequestType reqType){
-		if(!walker->isPendingReq){
-			walker->isPendingReq = true;
-			//pendingRowAccessQ.push({walker, reqType, rowIndex});
-			pendingRowAccessQ.push({walker, rowIndex});
-			return true;
-		}
-		return false;
-	}
-
-	enum RowSchedulerState {
-		SCH_STATE_IDLE,
-		SCH_STATE_BUSY,
-	} rowSchState = SCH_STATE_IDLE;
 
 	u64 waitCounter = 0;
-	//u64
-
-	void rowSchedulerClock(){
-		if(pendingRowAccessQ.empty()){
-			//nothing to do
-			return;
-		}
-
-#if (PAGE_POLICY == OPEN_PAGE_POLICY)
-
-		if(rowSchState == SCH_STATE_BUSY){
-			if(!--waitCounter){
-				//Counter expired. Requested row is now opened.
-				RowRequestInfo& currRRInfo = pendingRowAccessQ.front();
-				currOpenRow = currRRInfo.rowIndex;
-				rowSchState = SCH_STATE_IDLE;
-			}
-		}
-
-		if(rowSchState == SCH_STATE_IDLE) {
-			RowRequestInfo& currRRInfo = pendingRowAccessQ.front();
-			if(currOpenRow != currRRInfo.rowIndex){
-				//Currently open row is not the requested one.
-				//Close current row and open the requested row.
-				waitCounter = G_ROW_CLOSE_LATENCY + G_ROW_OPEN_LATENCY;
-				rowSchState = SCH_STATE_BUSY;
-			}
-			else{
-				//Row is open
-				currRRInfo.walker->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-				currRRInfo.walker->latchedRowIndex = currOpenRow;
-
-				currRRInfo.walker->isPendingReq = false;
-				pendingRowAccessQ.pop();
-				stalled = false;
-			}
-		}
-
-#elif(PAGE_POLICY == CLOSE_PAGE_POLICY)
-#error Close page policy is not implemented yet
-#else
-#error Invalid page policy
-#endif
-
-	}
 
 	void runLocalRadixSort(){
 		LOCAL_ADDRESS_TYPE startAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
@@ -222,78 +137,6 @@ public:
 		writeEndAddr = writeStartAddr;
 	}
 
-	void initLocalHistPerRange(){
-		finishedLocalHist = false;
-		stalled = false;
-
-		//Reset histogram. No need to worry about simulation cycles as it would be negligible compared to others
-		memset(memoryArrayObj->data + histStartAddr, 0, G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE));
-
-		readStartAddrOfRange = readEndAddrOfRange;
-		rowSchState = SCH_STATE_IDLE;
-	}
-
-	void runLocalHistOneCycle(){
-		rowSchedulerClock();
-
-		if(!finishedLocalHist && !stalled){
-
-			if(readEndAddrOfRange >= readEndAddr){
-				//Finished going through all data elements
-				finishedLocalHist = true;
-				#pragma omp atomic
-				numOfProcessedSubarrays++;
-				return;
-			}
-
-			u64 readRowIndex = extractRowIndexFromLocalAddress(readEndAddrOfRange);
-			//u64 readAddressCounter = extractColCounterFromLocalAddress(readStartAddr);
-			if(walkers[0]->latchedRowIndex != readRowIndex){
-				//schedule current row read in walker 0
-				scheduleRowAccess(readRowIndex, walkers[0]);
-
-				////schedule next row read in walker 1 in advance
-				//scheduleRowAccess(readRowIndex + 1, walkers[1]);
-
-				stalled = true;
-
-				return;
-			}
-
-			//walker 0 now contains required row
-			u64 readColAddr = extractColCounterFromLocalAddress(readEndAddrOfRange);
-			KEY_TYPE key = walkers[0]->latchedRow->readKey(readColAddr);
-			FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
-
-			if(radix >= rangeEnd){
-				//done building local histogram for this range
-				finishedLocalHist = true;
-				#pragma omp atomic
-				numOfProcessedSubarrays++;
-				return;
-			}
-
-
-			LOCAL_ADDRESS_TYPE histAddress = histStartAddr + (radix % G_NUM_HIST_ELEMS) * sizeof(HIST_ELEM_TYPE);
-			u64 histRowIndex = extractRowIndexFromLocalAddress(histAddress);
-			if(walkers[1]->latchedRowIndex != histRowIndex){
-				//schedule histogram row to be latched in walker 1
-				scheduleRowAccess(histRowIndex, walkers[1]);
-
-				stalled = true;
-
-				return;
-			}
-
-			LOCAL_ADDRESS_TYPE histColAddr = extractColCounterFromLocalAddress(histAddress);
-			HIST_ELEM_TYPE currHistVal = walkers[1]->latchedRow->readHist(histColAddr);
-			walkers[1]->latchedRow->writeHist(histColAddr, currHistVal + 1);
-
-			// Done with this key, move onto the next key
-			readEndAddrOfRange += sizeof(KEY_TYPE);
-		}
-	}
-
 	u64 runLocalHist(){
 		u64 elemProcessed = 0;
 		memset(memoryArrayObj->data + histStartAddr, 0, G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE));
@@ -313,6 +156,8 @@ public:
 	}
 
 	LOCAL_ADDRESS_TYPE currReadAddr = 0;
+	LOCAL_ADDRESS_TYPE baseWriteAddr = 0;
+	LOCAL_ADDRESS_TYPE currWriteAddr = 0;
 	LOCAL_ADDRESS_TYPE targetAddr = 0;
 	KEY_TYPE key = 0;
 
@@ -322,14 +167,14 @@ public:
 		PSTATE_HIST_READ,
 		PSTATE_STALLED_ON_HIST_READ,
 		PSTATE_HANDLE_QUEUE,
+		PSTATE_PLACEMENT,
 		PSTATE_STALLED_ON_PLACEMENT,
 		PSTATE_INVALID
 	} placementSchState = PSTATE_INVALID;
 
 
-	void initPlacementPerRange(){
+	void initPrePlacementPerRange(){
 		finishedPlacementRead = false;
-		stalled = false;
 		currReadAddr = readEndAddrOfRange - sizeof(KEY_TYPE);
 
 		if(currReadAddr < readStartAddrOfRange){
@@ -347,481 +192,173 @@ public:
 	u64 targetRowIndex;
 
 
+	void runPrePlacementConsumerOneCycle(){
+		const u64 qSize = incomingPackets.size();
+		if(qSize){
+			if(qSize > maxQueueLoad){
+				maxQueueLoad = qSize;
+			}
+			Packet<PlacementPacket>* tmpPacket = incomingPackets.front();
+			incomingPackets.pop();
+			producedPackets++;
+			if(tmpPacket->dstId == SelfIndex){
+				memoryArrayObj->writeX<PlacementPacket>(writeEndAddr, tmpPacket->payload);
+				writeEndAddr += sizeof(PlacementPacket);
 
-//	void runPlacementReadOneCycle(){
-//		// We read from the end towards the beginning to maintain stable placement of data elements
-//
-//		if(currReadAddr < readStartAddrOfRange){
-//			//Finished going through all elements in range
-//			finishedPlacementRead = true;
-//			placementState = PLACEMENT_STATE_HANDLE_QUEUE;
-//			//#pragma omp atomic
-//			numOfProcessedSubarrays++;
-//			return;
-//		}
-//
-//		u64 readRowIndex = extractRowIndexFromLocalAddress(currReadAddr);
-//		if(walkers[0]->latchedRowIndex != readRowIndex){
-//			//schedule current row read in walker 0
-//			scheduleRowAccess(readRowIndex, walkers[0]);
-//
-//			stalled = true;
-//			return;
-//		}
-//
-//		//walker 0 now contains required row
-//		u64 readColAddr = extractColCounterFromLocalAddress(currReadAddr);
-//		key = walkers[0]->latchedRow->readKey(readColAddr);
-//		FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
-//
-//		LOCAL_ADDRESS_TYPE histAddress = histStartAddr + (radix % G_NUM_HIST_ELEMS) * sizeof(HIST_ELEM_TYPE);
-//		u64 histRowIndex = extractRowIndexFromLocalAddress(histAddress);
-//		if(walkers[1]->latchedRowIndex != histRowIndex){
-//			//schedule histogram row to be latched in walker 1
-//			scheduleRowAccess(histRowIndex, walkers[1]);
-//
-//			stalled = true;
-//			return;
-//		}
-//
-//		LOCAL_ADDRESS_TYPE histColAddr = extractColCounterFromLocalAddress(histAddress);
-//		HIST_ELEM_TYPE location = walkers[1]->latchedRow->readHist(histColAddr);
-//		location--;
-//		walkers[1]->latchedRow->writeHist(histColAddr, location);
-//
-//		//push into queue
-//		const u64 numOfWriteElementsPerSub = (reservedBytesForReadWriteArray / sizeof(KEY_TYPE));
-//		u64 dstSub = location / numOfWriteElementsPerSub;
-//		LOCAL_ADDRESS_TYPE dstOff = location % numOfWriteElementsPerSub;
-//
-//		PlacementPacket pkt = {key, (LOCAL_ADDRESS_TYPE)(dstOff * sizeof(KEY_TYPE))};
-//
-//		dataTransfer* tmpPacket = new dataTransfer(sizeof(PlacementPacket), dstSub, (READ_DATA_TYPE_IN_MEMORY_ARRAY*)&pkt);
-//		incomingPackets.push(tmpPacket);
-//		//#pragma omp atomic
-//		numOfInFlightPackets++;
-//
-//		// Done with this key, move onto the next key
-//		currReadAddr -= sizeof(KEY_TYPE);
-//
-//		if(incomingPackets.size() >= PLACEMENT_QUEUE_HIGH_WATER_MARK){
-//			//queue almost full, switch to handle packets
-//			placementState = PLACEMENT_STATE_HANDLE_QUEUE;
-//		}
-//	}
+				//done with this packet
+				placementPacketAllocator->free(tmpPacket);
 
-//	void runPlacementQueueOneCycle(){
-//		if(incomingPackets.size()){
-//			dataTransfer* tmpPacket = incomingPackets.front();
-//			if(isDestinationForDataTransfer(tmpPacket)){
-//				PlacementPacket* pkt = (PlacementPacket*)(tmpPacket->payload);
-//				LOCAL_ADDRESS_TYPE writeAddr = writeStartAddr + pkt->offset;
-//				u64 writeRowIndex = extractRowIndexFromLocalAddress(writeAddr);
-//				if(walkers[2]->latchedRowIndex != writeRowIndex){
-//					scheduleRowAccess(writeRowIndex, walkers[2]);
-//					stalled = true;
-//					return;
-//				}
-//
-//				LOCAL_ADDRESS_TYPE writeColAddr = extractColCounterFromLocalAddress(writeAddr);
-//				walkers[2]->latchedRow->writeKey(writeColAddr, pkt->key);
-//
-//				if(writeAddr >= writeEndAddr){
-//					writeEndAddr = writeAddr + sizeof(KEY_TYPE);
-//				}
-//
-//				//done with this packet
-//				incomingPackets.pop();
-//				delete tmpPacket;
-//				//#pragma omp atomic
-//				numOfInFlightPackets--;
-//			}
-//			else{
-//				//forward packet
-//				incomingPackets.pop();
-//				std::queue <dataTransfer*>* nextSubArrayQ = getNextComputeSubArrayQ(tmpPacket);
-//				nextSubArrayQ->push(tmpPacket);
-//			}
-//		}
-//
-//		if((incomingPackets.size() <= PLACEMENT_QUEUE_LOW_WATER_MARK) && !finishedPlacementRead){
-//			//queue almost empty, and not all elements are read yet. Switch to read elements.
-//			placementState = PLACEMENT_STATE_HANDLE_READ;
-//			return;
-//		}
-//	}
-
-
-//	void runPlacementOneCycle(){
-//		rowSchedulerClock();
-//		if(!finishedPlacementRead && !stalled && (placementState == PLACEMENT_STATE_HANDLE_READ)){
-//			runPlacementReadOneCycle();
-//		}
-//		else if(!stalled && (placementState == PLACEMENT_STATE_HANDLE_QUEUE)){
-//			runPlacementQueueOneCycle();
-//		}
-//	}
-
-	void runPlacementOneCycleV1(){
-
-//		stateCounter[placementSchState]++;
-//
-//		switch(placementSchState){
-//
-//		case PSTATE_CHECK_RANGE:
-//			if(currReadAddr < readStartAddrOfRange){
-//				//Finished going through all elements in range
-//				finishedPlacementRead = true;
-//				//#pragma omp atomic
-//				numOfProcessedSubarrays++;
-//				placementSchState = PSTATE_HANDLE_QUEUE;
-//			}
-//			else {
-//				targetRowIndex = extractRowIndexFromLocalAddress(currReadAddr);
-//				if(walkers[0]->latchedRowIndex != targetRowIndex){
-//					if(targetRowIndex == currOpenRow){
-//						walkers[0]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-//						walkers[0]->latchedRowIndex = currOpenRow;
-//						placementSchState = PSTATE_KEY_READ;		//already open
-//					}
-//					else{
-//						waitCounter = G_ROW_ACCESS_LATENCY;
-//						placementSchState = PSTATE_STALLED_ON_KEY_READ;		//row not latched on walker 0
-//					}
-//				}
-//				else{
-//					placementSchState = PSTATE_KEY_READ;		//already latched
-//				}
-//			}
-//			break;
-//
-//		case PSTATE_STALLED_ON_KEY_READ:
-//			if(!--waitCounter){
-//				currOpenRow = targetRowIndex;	//timer expired. Target row is now open.
-//				walkers[0]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-//				walkers[0]->latchedRowIndex = currOpenRow;
-//				placementSchState = PSTATE_KEY_READ;
-//			}
-//			break;
-//
-//		case PSTATE_KEY_READ:
-//		{
-//			//walker 0 now contains required row
-//			u64 readColAddr = extractColCounterFromLocalAddress(currReadAddr);
-//			key = walkers[0]->latchedRow->readKey(readColAddr);
-//			FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
-//
-//			targetAddr = histStartAddr + (radix % G_NUM_HIST_ELEMS) * sizeof(HIST_ELEM_TYPE);
-//			targetRowIndex = extractRowIndexFromLocalAddress(targetAddr);
-//			if(walkers[1]->latchedRowIndex != targetRowIndex){
-//				if(targetRowIndex == currOpenRow){
-//					walkers[1]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-//					walkers[1]->latchedRowIndex = currOpenRow;
-//					placementSchState = PSTATE_HIST_READ;		//already open
-//				}
-//				else{
-//					waitCounter = G_ROW_ACCESS_LATENCY;
-//					placementSchState = PSTATE_STALLED_ON_HIST_READ;		//row not latched on walker 0
-//				}
-//			}
-//			else{
-//				placementSchState = PSTATE_HIST_READ;	//already latched
-//			}
-//		}
-//			break;
-//
-//		case PSTATE_STALLED_ON_HIST_READ:
-//			if(!--waitCounter){
-//				currOpenRow = targetRowIndex;	//timer expired. Target row is now open.
-//				walkers[1]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-//				walkers[1]->latchedRowIndex = currOpenRow;
-//				placementSchState = PSTATE_HIST_READ;
-//			}
-//			break;
-//
-//		case PSTATE_HIST_READ:
-//		{
-//			LOCAL_ADDRESS_TYPE histColAddr = extractColCounterFromLocalAddress(targetAddr);
-//			HIST_ELEM_TYPE location = walkers[1]->latchedRow->readHist(histColAddr);
-//			location--;
-//			walkers[1]->latchedRow->writeHist(histColAddr, location);
-//
-//			//push into queue
-//			const u64 numOfWriteElementsPerSub = (reservedBytesForReadWriteArray / sizeof(KEY_TYPE));
-//			u64 dstSub = location / numOfWriteElementsPerSub;
-//			LOCAL_ADDRESS_TYPE dstOff = location % numOfWriteElementsPerSub;
-//
-//			PlacementPacket pkt = {key, (LOCAL_ADDRESS_TYPE)(dstOff * sizeof(KEY_TYPE))};
-//			dataTransfer* tmpPacket = new dataTransfer(sizeof(PlacementPacket), dstSub, (READ_DATA_TYPE_IN_MEMORY_ARRAY*)&pkt);
-//			incomingPackets.push(tmpPacket);
-//			//#pragma omp atomic
-//			numOfInFlightPackets++;
-//
-//			// Done with this key, move onto the next key
-//			currReadAddr -= sizeof(KEY_TYPE);
-//
-//			if(incomingPackets.size() >= PLACEMENT_QUEUE_HIGH_WATER_MARK){
-//				//queue almost full, switch to handle packets
-//				placementSchState = PSTATE_HANDLE_QUEUE;
-//			}
-//			else{
-//				placementSchState = PSTATE_CHECK_RANGE;
-//			}
-//		}
-//			break;
-//
-//		case PSTATE_HANDLE_QUEUE:
-//			if(!incomingPackets.empty()){
-//				tmpPacket = incomingPackets.front();
-//				incomingPackets.pop();
-//				if(isDestinationForDataTransfer(tmpPacket)){
-//					PlacementPacket* pkt = (PlacementPacket*)(tmpPacket->payload);
-//					targetAddr = writeStartAddr + pkt->offset;
-//					targetRowIndex = extractRowIndexFromLocalAddress(targetAddr);
-//
-//					if(walkers[2]->latchedRowIndex != targetRowIndex){
-//						if(targetRowIndex == currOpenRow){
-//							walkers[2]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-//							walkers[2]->latchedRowIndex = currOpenRow;
-//							placementSchState = PSTATE_DO_PLACEMENT;		//already open
-//						}
-//						else{
-//							waitCounter = G_ROW_ACCESS_LATENCY;
-//							placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
-//						}
-//					}
-//					else{
-//						placementSchState = PSTATE_DO_PLACEMENT;	//already latched
-//					}
-//				}
-//				else{
-//					//forward packet
-//					hopCounter++;
-//					auto nextSubArrayQ = getNextComputeSubArrayQ(tmpPacket);
-//					//if(nextSubArrayQ->size() >= PLACEMENT_QUEUE_MAX_CAPACITY){
-//					//	placementSchState = PSTATE_STALLED_ON_QUEUE_PUSH;
-//					//}
-//					//else{
-//						nextSubArrayQ->push(tmpPacket);
-//						placementSchState = PSTATE_CHECK_QUEUE_LOW_WATERMARK;
-//					//}
-//				}
-//			}
-//			else if(!finishedPlacementRead){
-//				//queue empty
-//				placementSchState = PSTATE_CHECK_RANGE;
-//			}
-//			break;
-//
-//		case PSTATE_STALLED_ON_PLACEMENT:
-//			if(!--waitCounter){
-//				currOpenRow = targetRowIndex;	//timer expired. Target row is now open.
-//				walkers[2]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-//				walkers[2]->latchedRowIndex = currOpenRow;
-//				placementSchState = PSTATE_DO_PLACEMENT;
-//			}
-//			break;
-//
-//
-//		case PSTATE_DO_PLACEMENT:
-//		{
-//			LOCAL_ADDRESS_TYPE writeColAddr = extractColCounterFromLocalAddress(targetAddr);
-//			PlacementPacket* pkt = (PlacementPacket*)(tmpPacket->payload);
-//			walkers[2]->latchedRow->writeKey(writeColAddr, pkt->key);
-//			if(targetAddr >= writeEndAddr){
-//				writeEndAddr = targetAddr + sizeof(KEY_TYPE);
-//			}
-//
-//			//done with this packet
-//			delete tmpPacket;
-//			//#pragma omp atomic
-//			numOfInFlightPackets--;
-//			placementSchState = PSTATE_CHECK_QUEUE_LOW_WATERMARK;
-//		}
-//			break;
-//
-//
-////		case PSTATE_STALLED_ON_QUEUE_PUSH:
-////		{
-////			auto nextSubArrayQ = getNextComputeSubArrayQ(tmpPacket);
-////			if(nextSubArrayQ->size() < PLACEMENT_QUEUE_MAX_CAPACITY){
-////				nextSubArrayQ->push(tmpPacket);
-////				placementSchState = PSTATE_CHECK_QUEUE_LOW_WATERMARK;
-////			}
-////		}
-////			break;
-//
-//		case PSTATE_CHECK_QUEUE_LOW_WATERMARK:
-//			if((incomingPackets.size() <= PLACEMENT_QUEUE_LOW_WATER_MARK) && !finishedPlacementRead){
-//				//queue almost empty, and not all elements are read yet. Switch to read elements.
-//				placementSchState = PSTATE_CHECK_RANGE;
-//			}
-//			else{
-//				placementSchState = PSTATE_HANDLE_QUEUE;
-//			}
-//			break;
-//
-//
-//		default:
-//			std::cerr << "Invalid placement state!!" << std::endl;
-//			exit(-1);
-//		}
+				//#pragma omp atomic
+				numOfInFlightPackets--;
+			}
+			else{
+				//forward packet
+				hopCounter++;
+				//auto nextSubArrayQ = getNextComputeSubArrayQSemiRing(tmpPacket->dstId);
+				//auto nextSubArrayQ = getNextComputeSubArrayQCrossbar(tmpPacket->dstId);
+				auto nextSubArrayQ = getNextComputeSubArrayQDragonfly(tmpPacket->dstId);
+				nextSubArrayQ->push(tmpPacket);
+			}
+		}
 	}
 
+	void runPrePlacementProducerOneCycle(){
 
+		if(!finishedPlacementRead){
+			stateCounter[placementSchState]++;
 
-	void runPlacementOneCycleV2(){
+			switch(placementSchState){
 
-		stateCounter[placementSchState]++;
-
-		switch(placementSchState){
-
-		case PSTATE_KEY_READ:
-			targetRowIndex = extractRowIndexFromLocalAddress(currReadAddr);
-			if(walkers[0]->latchedRowIndex == targetRowIndex){
-				//walker 0 now contains required row
-				u64 readColAddr = extractColCounterFromLocalAddress(currReadAddr);
-				key = walkers[0]->latchedRow->readKey(readColAddr);
+			case PSTATE_KEY_READ:
+			{
+				key = memoryArrayObj->readKey(currReadAddr);
 				FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
 
 				targetAddr = histStartAddr + (radix % G_NUM_HIST_ELEMS) * sizeof(HIST_ELEM_TYPE);
-				targetRowIndex = extractRowIndexFromLocalAddress(targetAddr);
-				if(walkers[1]->latchedRowIndex != targetRowIndex){
-					waitCounter = G_ROW_ACCESS_LATENCY;
-					placementSchState = PSTATE_STALLED_ON_HIST_READ;		//row not latched on walker 0
-				}
-				else{
-					placementSchState = PSTATE_HIST_READ;	//already latched
-				}
-			}
-			else{
-				waitCounter = G_ROW_ACCESS_LATENCY;
-				placementSchState = PSTATE_STALLED_ON_KEY_READ;		//row not latched on walker 0
-			}
-
-			break;
-
-
-		case PSTATE_STALLED_ON_KEY_READ:
-			if(!--waitCounter){
-				currOpenRow = targetRowIndex;	//timer expired. Target row is now open.
-				walkers[0]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-				walkers[0]->latchedRowIndex = currOpenRow;
-				placementSchState = PSTATE_KEY_READ;
-			}
-			break;
-
-
-		case PSTATE_HIST_READ:
-		{
-			LOCAL_ADDRESS_TYPE histColAddr = extractColCounterFromLocalAddress(targetAddr);
-			HIST_ELEM_TYPE location = walkers[1]->latchedRow->decrementHist(histColAddr);
-
-			//push into queue
-			u64 dstSub = location >> locShiftAmt;
-			LOCAL_ADDRESS_TYPE dstOff = location & ((1UL << locShiftAmt) - 1);
-
-			Packet<PlacementPacket>* tmpPacket = placementPacketAllocator->alloc();
-			tmpPacket->dstId = dstSub;
-			tmpPacket->payload.key = key;
-			tmpPacket->payload.offset = dstOff * sizeof(KEY_TYPE);
-
-			incomingPackets.push(tmpPacket);
-			//#pragma omp atomic
-			numOfInFlightPackets++;
-
-			// Done with this key, move onto the next key
-			currReadAddr -= sizeof(KEY_TYPE);
-
-			if(currReadAddr < readStartAddrOfRange){
-				//Finished going through all elements in range
-				finishedPlacementRead = true;
-				//#pragma omp atomic
-				numOfProcessedSubarrays++;
-				placementSchState = PSTATE_HANDLE_QUEUE;
-			}
-			else if(incomingPackets.size() >= PLACEMENT_QUEUE_HIGH_WATER_MARK){
-				//queue almost full, switch to handle packets
-				placementSchState = PSTATE_HANDLE_QUEUE;
-			}
-			else{
-				placementSchState = PSTATE_KEY_READ;		//read next element
-			}
-		}
-			break;
-
-
-		case PSTATE_STALLED_ON_HIST_READ:
-			if(!--waitCounter){
-				currOpenRow = targetRowIndex;	//timer expired. Target row is now open.
-				walkers[1]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-				walkers[1]->latchedRowIndex = currOpenRow;
 				placementSchState = PSTATE_HIST_READ;
 			}
-			break;
+				break;
 
 
-		case PSTATE_HANDLE_QUEUE:
-			if(!incomingPackets.empty()){
-				Packet<PlacementPacket>* tmpPacket = incomingPackets.front();
-				//incomingPackets.pop();
-				if(tmpPacket->dstId == SelfIndex){
-					targetAddr = writeStartAddr + tmpPacket->payload.offset;
-					targetRowIndex = extractRowIndexFromLocalAddress(targetAddr);
+			case PSTATE_HIST_READ:
+			{
+				HIST_ELEM_TYPE location = memoryArrayObj->decrementHist(targetAddr);
 
-					if(walkers[2]->latchedRowIndex != targetRowIndex){
-						waitCounter = G_ROW_ACCESS_LATENCY;
-						placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
-					}
-					else{
-						//already latched
-						LOCAL_ADDRESS_TYPE writeColAddr = extractColCounterFromLocalAddress(targetAddr);
-						walkers[2]->latchedRow->writeKey(writeColAddr, tmpPacket->payload.key);
-						if(targetAddr >= writeEndAddr){
-							writeEndAddr = targetAddr + sizeof(KEY_TYPE);
-						}
+				//push into queue
+				u64 dstSub = location >> locShiftAmt;
+				LOCAL_ADDRESS_TYPE dstOff = location & ((1UL << locShiftAmt) - 1);
 
-						//done with this packet
-						placementPacketAllocator->free(tmpPacket);
+				Packet<PlacementPacket>* tmpPacket = placementPacketAllocator->alloc();
+				tmpPacket->dstId = dstSub;
+				tmpPacket->payload.key = key;
+				tmpPacket->payload.offset = dstOff * sizeof(KEY_TYPE);
 
-						//#pragma omp atomic
-						numOfInFlightPackets--;
-						incomingPackets.pop();
-					}
+				incomingPackets.push(tmpPacket);
+				//#pragma omp atomic
+				numOfInFlightPackets++;
+				//producedPackets++;
+
+				// Done with this key, move onto the next key
+				currReadAddr -= sizeof(KEY_TYPE);
+
+				if(currReadAddr < readStartAddrOfRange){
+					//Finished going through all elements in range
+					finishedPlacementRead = true;
+					//#pragma omp atomic
+					numOfProcessedSubarrays++;
 				}
 				else{
-					//forward packet
-					hopCounter++;
-					auto nextSubArrayQ = getNextComputeSubArrayQ(tmpPacket->dstId);
-					incomingPackets.pop();
-					nextSubArrayQ->push(tmpPacket);
+					placementSchState = PSTATE_KEY_READ;
 				}
 			}
+				break;
 
-			if(!finishedPlacementRead && (incomingPackets.size() <= PLACEMENT_QUEUE_LOW_WATER_MARK)){
-				//queue almost empty, and not all elements are read yet. Switch to read elements.
-				placementSchState = PSTATE_KEY_READ;
+			default:
+				std::cerr << "Invalid pre-placement state!!" << std::endl;
+				exit(-1);
 			}
-			break;
-
-
-		case PSTATE_STALLED_ON_PLACEMENT:
-			if(!--waitCounter){
-				currOpenRow = targetRowIndex;	//timer expired. Target row is now open.
-				walkers[2]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-				walkers[2]->latchedRowIndex = currOpenRow;
-				placementSchState = PSTATE_HANDLE_QUEUE;
-			}
-			break;
-
-
-		default:
-			std::cerr << "Invalid placement state!!" << std::endl;
-			exit(-1);
 		}
 	}
 
 
+
+	void initPlacementPerRadix(){
+		finishedPlacementRead = false;
+		currReadAddr = writeStartAddr;
+		baseWriteAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
+
+		assert(writeStartAddr <= writeEndAddr);
+
+		if(currReadAddr >= writeEndAddr){
+			//Finished going through all elements in range
+			finishedPlacementRead = true;
+			//#pragma omp atomic
+			numOfProcessedSubarrays++;
+		}
+		else {
+			placementSchState = PSTATE_PLACEMENT;
+		}
+	}
+
+	void runPlacementOneCycle(){
+		if(!finishedPlacementRead){
+
+			stateCounter[placementSchState]++;
+
+			switch(placementSchState){
+
+			case PSTATE_PLACEMENT:
+			{
+				const PlacementPacket& pkt = memoryArrayObj->readX<PlacementPacket>(currReadAddr);
+				targetAddr = baseWriteAddr + pkt.offset;
+				targetRowIndex = extractRowIndexFromLocalAddress(targetAddr);
+
+				if(walkers[2]->latchedRowIndex != targetRowIndex){
+					placementRowMiss++;
+					waitCounter = G_ROW_ACCESS_LATENCY;
+					placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
+				}
+				else{
+					placementRowHit++;
+					//already latched
+					LOCAL_ADDRESS_TYPE writeColAddr = extractColCounterFromLocalAddress(targetAddr);
+					walkers[2]->latchedRow->writeKey(writeColAddr, pkt.key);
+
+					if(targetAddr + sizeof(KEY_TYPE) > memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR)){
+						memoryArrayObj->writeLocalAddr(G_ADDR_OF_READ_END_ADDR, targetAddr + sizeof(KEY_TYPE));
+					}
+
+					//go to next element
+					currReadAddr += sizeof(PlacementPacket);
+
+					if(currReadAddr >= writeEndAddr){
+						//Finished going through all elements in range
+						finishedPlacementRead = true;
+						//#pragma omp atomic
+						numOfProcessedSubarrays++;
+					}
+				}
+
+			}
+				break;
+
+
+			case PSTATE_STALLED_ON_PLACEMENT:
+				if(!--waitCounter){
+					currOpenRow = targetRowIndex;	//timer expired. Target row is now open.
+					walkers[2]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
+					walkers[2]->latchedRowIndex = currOpenRow;
+					placementSchState = PSTATE_PLACEMENT;
+				}
+				break;
+
+
+			default:
+				std::cerr << "Invalid placement state!!" << std::endl;
+				exit(-1);
+			}
+		}
+	}
 
 
 	void swapReadWriteArray(){

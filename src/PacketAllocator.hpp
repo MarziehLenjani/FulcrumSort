@@ -27,7 +27,9 @@ public:
 	}
 
 	Packet<T>* alloc(){
-		Packet<T>* lastFree = freeList[freeList.size() - 1];
+		const u64 qSize = freeList.size();
+		assert(qSize > 0);
+		Packet<T>* lastFree = freeList[qSize - 1];
 		freeList.pop_back();
 		return lastFree;
 	}
