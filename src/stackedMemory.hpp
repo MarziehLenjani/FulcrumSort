@@ -15,6 +15,8 @@
 #include "computSubarray.hpp"
 
 class dataPartitioning;
+class Device;
+
 class stackedMemory:public physicalComponent{
 private:
 	bool endOfProcessing=false;
@@ -23,7 +25,7 @@ public:
 	std::vector<computSubarray *> computSubarrayVector; //no need to delete this, this is just a copy of pointers
 	bool checkIfProcessHasEnd();
 	bool checkIfSubBlockLimitIsReached();
-	stackedMemory(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
+	stackedMemory(ID_TYPE l_id, physicalComponent * l_parent);
 	~stackedMemory();
 	void runOneSubClokCycle();
 

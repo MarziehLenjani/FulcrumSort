@@ -17,7 +17,7 @@
 class bank:public physicalComponent{
 public:
 	std::vector<computSubarray *> computSubarrayVector;
-	bank(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
+	bank(ID_TYPE l_id, physicalComponent * l_parent);
 	~bank();
 	void runOneSubClokCycle();
 };

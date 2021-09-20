@@ -8,11 +8,10 @@
 #include "stackedMemory.hpp"
 
 
-stackedMemory::stackedMemory(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner):
-	physicalComponent(l_id, l_firstDimOwner, l_secondDimOwner, l_thirdDimOwner){
+stackedMemory::stackedMemory(ID_TYPE l_id, physicalComponent * l_parent): physicalComponent(l_id, l_parent){
 	//std::cout<<CONF_NUMBER_OF_LAYERS_NAME <<" is "<<l_confObj->getConfig<CONF_NUMBER_OF_LAYERS_TYPE>(CONF_NUMBER_OF_LAYERS_NAME)<<std::endl;
 	for (ID_TYPE i=0; i < G_NUM_LAYERS; i++){
-		layerVector.push_back(new layer(i, this, NULL,NULL) ); //TODO: assign right values for the second and third dimensions
+		layerVector.push_back(new layer(i, this) ); //TODO: assign right values for the second and third dimensions
 	}
 
 	//generating a vector of compute subarrays for the stacked memory for easier acceess to all subarrays
@@ -22,9 +21,9 @@ stackedMemory::stackedMemory(ID_TYPE l_id, physicalComponent * l_firstDimOwner, 
 			for (ID_TYPE k=0; k < G_NUM_SUBARRAY_PER_BANK; k++){
 				computSubarray* sub = layerVector[i]->bankVector[j]->computSubarrayVector[k];
 				computSubarrayVector.push_back(sub); //TODO: assign right values for the second and third dimensions
-				//sub->initNextSubarraySemiRing();
+				sub->initNextSubarraySemiRing();
 				//sub->initNextSubarrayCrossbar();
-				sub->initNextSubarrayDragonfly();
+				//sub->initNextSubarrayDragonfly();
 			}
 		}
 	}

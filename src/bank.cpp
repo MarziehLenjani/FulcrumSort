@@ -5,11 +5,10 @@
  *      Author: ml2au
  */
 #include "bank.hpp"
-bank::bank(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner)
-:physicalComponent(l_id, l_firstDimOwner, l_secondDimOwner, l_thirdDimOwner){
+bank::bank(ID_TYPE l_id, physicalComponent * l_parent) : physicalComponent(l_id, l_parent){
 	//TODO: do initializations specific for the layer class here
 	for (ID_TYPE i=0; i < G_NUM_SUBARRAY_PER_BANK; i++){
-		computSubarrayVector.push_back(new computSubarray(i, this, NULL,NULL) ); //TODO: assign right values for the second and third dimensions
+		computSubarrayVector.push_back(new computSubarray(i, this) );
 	}
 }
 

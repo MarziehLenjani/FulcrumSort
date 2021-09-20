@@ -17,15 +17,12 @@
 
 using namespace std;
 
-computSubarray::computSubarray(ID_TYPE l_id, physicalComponent *l_firstDimOwner,
-		physicalComponent *l_secondDimOwner, physicalComponent *l_thirdDimOwner) :
-		physicalComponent(l_id, l_firstDimOwner, l_secondDimOwner,
-				l_thirdDimOwner) {
+computSubarray::computSubarray(ID_TYPE l_id, physicalComponent *l_parent) : physicalComponent(l_id, l_parent) {
 	//TODO: do initializations specific for the subarray class here
 	memoryArrayObj = new MemoryObject(G_SIZE_OF_SUBARRAY_IN_BYTE);
-	bankObj = (bank*) firstDimOwner;
-	layerObj = (layer*) (bankObj->firstDimOwner);
-	stackedMemoryObj = (stackedMemory*) (layerObj->firstDimOwner);
+	bankObj = (bank*) parent;
+	layerObj = (layer*) (bankObj->parent);
+	stackedMemoryObj = (stackedMemory*) (layerObj->parent);
 	for (u64 i = 0; i < NUM_WALKERS; i++) {
 		walkers[i] = new Walker;
 	}

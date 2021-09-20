@@ -6,6 +6,8 @@
 #include "dataPartitioning.hpp"
 #include "test.hpp"
 #include "computSubarray.hpp"
+#include "Device.hpp"
+#include "CombinedDevices.hpp"
 #include <math.h>
 #include <cassert>
 #include <algorithm>
@@ -35,7 +37,7 @@ int main(int argc, char **argv)
     assert((G_NUM_BANKS_PER_LAYER % 2) == 0);
 
     //----------------------building a 3d stack component
-	stackedMemory stackedMemoryObj((ID_TYPE)0, NULL, NULL, NULL);
+	stackedMemory stackedMemoryObj((ID_TYPE)0, NULL);
 	//-----------------------building dataPartitioning object to its APIs
 	dataPartitioning dataPartitioningObj(&stackedMemoryObj);
 

@@ -45,7 +45,7 @@ public:
 	void initialize(LOCAL_ADDRESS_TYPE addressOfTheReadStartAddress,LOCAL_ADDRESS_TYPE addressOfTheReadEndAdddress, LOCAL_ADDRESS_TYPE addressOfTheWriteStartAddress,
 			FULCRU_WORD_TYPE t_RegA, FULCRU_WORD_TYPE t_RegB, FULCRU_WORD_TYPE t_SelfIndex ); //
 
-	computSubarray(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
+	computSubarray(ID_TYPE l_id, physicalComponent * l_parent);
 	~computSubarray( );
 	void runOneSubClokCycle();
 	//memoryArray * memoryArrayObj;
@@ -214,9 +214,9 @@ public:
 			else{
 				//forward packet
 				hopCounter++;
-				//auto nextSubArrayQ = getNextComputeSubArrayQSemiRing(tmpPacket->dstId);
+				auto nextSubArrayQ = getNextComputeSubArrayQSemiRing(tmpPacket->dstId);
 				//auto nextSubArrayQ = getNextComputeSubArrayQCrossbar(tmpPacket->dstId);
-				auto nextSubArrayQ = getNextComputeSubArrayQDragonfly(tmpPacket->dstId);
+				//auto nextSubArrayQ = getNextComputeSubArrayQDragonfly(tmpPacket->dstId);
 				nextSubArrayQ->push(tmpPacket);
 			}
 		}

@@ -1,26 +1,11 @@
-/*
- * physicalComponent.hpp
- *
- *  Created on: May 16, 2021
- *      Author: marzieh
- */
+#pragma once
 
-#ifndef PHYSICALCOMPONENT_HPP_
-#define PHYSICALCOMPONENT_HPP_
 #include "types.hpp"
 
-class physicalComponent{
-
-public:
+struct physicalComponent{
 	 ID_TYPE id;
-	 //configAndStats * confObj=NULL;
+	 physicalComponent* parent;
 
-
-	 physicalComponent * firstDimOwner;
-	 physicalComponent * secondDimOwner;
-	 physicalComponent * thirdDimOwner;
-	 physicalComponent(ID_TYPE l_id, physicalComponent * l_firstDimOwner, physicalComponent * l_secondDimOwner, physicalComponent * l_thirdDimOwner);
-	 ~physicalComponent();
+	 physicalComponent(ID_TYPE l_id, physicalComponent* l_parent) : id(l_id), parent(l_parent){};
 };
 
-#endif /* FULCRUM_SIM_DEVEL_SRC_PHYSICALCOMPONENT_HPP_ */

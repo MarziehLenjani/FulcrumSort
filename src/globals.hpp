@@ -8,6 +8,8 @@
 #include <iostream>
 
 // Configuration
+#define G_NUM_DEVICES				2
+#define G_NUM_STACKS				4
 #define G_NUM_LAYERS				8
 #define G_NUM_BANKS_PER_LAYER		64
 #define G_NUM_SUBARRAY_PER_BANK		16
@@ -23,9 +25,9 @@
 #define G_NUM_WORDS_IN_ROW			64
 #define G_NUM_BYTES_IN_ROW			(G_NUM_WORDS_IN_ROW * sizeof(FULCRU_WORD_TYPE))
 
-#define G_RADIX_BITS				11
+#define G_RADIX_BITS				16
 #define G_KEY_BITS					(sizeof(KEY_TYPE) * 8)
-#define G_NUM_HIST_ELEMS			(1UL << 11)
+#define G_NUM_HIST_ELEMS			(1UL << 16)
 
 
 // Timings for modeling
