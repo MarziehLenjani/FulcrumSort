@@ -1,11 +1,12 @@
 #include "vault.hpp"
+
+#include "../src/Bank.hpp"
+#include "../src/Layer.hpp"
 #include "logicLayer.hpp"
 #include "computSubArray.hpp"
 #include "types.hpp"
 #include "walkerDataAndSetting.hpp"
 #include "configAndStats.hpp"
-#include "bank.hpp"
-#include "layer.hpp"
 #include "transferMedium.hpp"
 int vault::vaultID=0;
 vault::vault(configAndStats* configObjPointer_t){
@@ -16,17 +17,17 @@ vault::vault(configAndStats* configObjPointer_t){
 	numComSubPerBansk=configObjPointer_t->numComSubPerBansk;
 	totalSubArrayCompute=numLayer*numBankPerVaultLayer*numComSubPerBansk;
 	logicLayerObj= new logicLayer(this);
-	bank * tOwnerBank;
-	layer * tOwnerLayer;
+	Bank * tOwnerBank;
+	Layer * tOwnerLayer;
 
 	assert(this==logicLayerObj->ownerVault);
 	int subArrayPerBankCounter=0;
 	for (int i=0;i<totalSubArrayCompute;i++){
 		if(i%(numComSubPerBansk*numBankPerVaultLayer)==0){
-			tOwnerLayer= new layer(this);
+			tOwnerLayer= new Layer(this);
 		}
 		if(i% (numComSubPerBansk)==0){
-			tOwnerBank=new bank(tOwnerLayer, this);
+			tOwnerBank=new Bank(tOwnerLayer, this);
 		}
 
 		compSubVector.push_back(new computSubArray(i, configObjPointer_t->memoryArraySize, this, tOwnerBank,tOwnerLayer) );

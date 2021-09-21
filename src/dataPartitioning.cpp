@@ -5,14 +5,18 @@
  *      Author: marzieh
  */
 #include "dataPartitioning.hpp"
-#include "stackedMemory.hpp"
 #include "MemoryObject.hpp"
 #include  <boost/utility/binary.hpp>
+#include "PulleySystem.hpp"
+#include "Stack.hpp"
 
-dataPartitioning::dataPartitioning(stackedMemory * l_stackObj){
-	stackObj=l_stackObj;
-	l_stackObj->dataPartitioningObj=this;
-}
+//dataPartitioning::dataPartitioning(Stack * l_stackObj){
+//	stackObj=l_stackObj;
+//	l_stackObj->dataPartitioningObj=this;
+//}
+
+
+dataPartitioning::dataPartitioning(PulleySystem * devices) : devices(devices){}
 
 //ERROR_RETURN_TYPE dataPartitioning::globalAddressToLocalAddressTranslation(PHYSICAL_EXTERNAL_ADDRESS_TYPE address, ID_TYPE & stackId, ID_TYPE & layerId, ID_TYPE & bankId, ID_TYPE & computeSubarrayID){
 //	//TODO: complete this for all possible patterns
@@ -71,19 +75,21 @@ dataPartitioning::dataPartitioning(stackedMemory * l_stackObj){
 //}
 
 // when we broadcast data we have three steps: 1. writing the data itself, wrinting the start and the the end address into the local subarrays in needed
-ERROR_RETURN_TYPE  dataPartitioning::broadcastDataToAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY * broadcastedData, LOCAL_ADDRESS_TYPE sizeOFData ){
-	ERROR_RETURN_TYPE ret;
-	for(computSubarray* ptr : stackObj->computSubarrayVector){
-		ptr->memoryArrayObj->write(DataAddress, sizeOFData, broadcastedData);
-		if(writeMetadat){
-			LOCAL_ADDRESS_TYPE startAaddress=localAddressToLocalMetadata(DataAddress);
-			ptr->memoryArrayObj->write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
-			LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress+sizeOFData);
-			ptr->memoryArrayObj->write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
-		}
-	}
-	return ret;
-}
+//ERROR_RETURN_TYPE  dataPartitioning::broadcastDataToAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY * broadcastedData, LOCAL_ADDRESS_TYPE sizeOFData ){
+//	ERROR_RETURN_TYPE ret;
+//	for(Subarray* ptr : stackObj->computSubarrayVector){
+//		ptr->memoryArrayObj->write(DataAddress, sizeOFData, broadcastedData);
+//		if(writeMetadat){
+//			LOCAL_ADDRESS_TYPE startAaddress=localAddressToLocalMetadata(DataAddress);
+//			ptr->memoryArrayObj->write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
+//			LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress+sizeOFData);
+//			ptr->memoryArrayObj->write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
+//		}
+//	}
+//	return ret;
+//}
+
+
 // when we partition data we have three steps: 1. deivinding data , wrinting the start and the the end address into the local subarrays in needed
 ERROR_RETURN_TYPE  dataPartitioning::partitionEquallyAmongAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY * dataToBePartitionedData, LOCAL_ADDRESS_TYPE numOfDataElements ){
 
@@ -94,7 +100,7 @@ ERROR_RETURN_TYPE  dataPartitioning::partitionEquallyAmongAllComputeSubArray (LO
 	assert(remainingElems < G_NUM_TOTAL_SUBARRAY);
 
 	u64 totElemDistributed = 0;	//just for checking if all data elements are distributed
-	for(computSubarray* ptr : stackObj->computSubarrayVector){
+	for(Subarray* ptr : devices->subarrayVector){
 		LOCAL_ADDRESS_TYPE numDataElementsInSubarray = eachPartition;
 		if(remainingElems){
 			numDataElementsInSubarray++;
@@ -125,37 +131,37 @@ LOCAL_ADDRESS_TYPE dataPartitioning::metadatatoLocalAddress(LOCAL_ADDRESS_TYPE l
 	return (localMetadata*4);
 }
 //TODO: test this function
-ERROR_RETURN_TYPE dataPartitioning::readData(LOCAL_ADDRESS_TYPE& DataAddress, bool readByMetadat, bool printData, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY** pointerToReadDataPointer, LOCAL_ADDRESS_TYPE& sizeOFData, ID_TYPE layerId, ID_TYPE bankID, ID_TYPE computeSubArrayID ){
-	ERROR_RETURN_TYPE ret;
-	if(readByMetadat){ //we should assign value to size by reading metadata
-
-		LOCAL_ADDRESS_TYPE startMetadatAddress;
-
-		stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->read(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(startMetadatAddress));
-		DataAddress=metadatatoLocalAddress (startMetadatAddress);
-		LOCAL_ADDRESS_TYPE endMetadatAddress;
-		stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->read(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(endMetadatAddress));
-		sizeOFData=metadatatoLocalAddress (endMetadatAddress-startMetadatAddress);
-		(*pointerToReadDataPointer)= (READ_DATA_TYPE_IN_MEMORY_ARRAY*) calloc(sizeOFData, sizeof(READ_DATA_TYPE_IN_MEMORY_ARRAY));
-
-	}else{ //read by size, size is a read value here
-			}
-	stackObj->layerVector[layerId]->bankVector[bankID]->computSubarrayVector[computeSubArrayID]->memoryArrayObj->read(DataAddress, sizeOFData, (*pointerToReadDataPointer));
-
-
-	if(printData){
-		std::cout<<"_________printing memory array conents in addresss:" <<DataAddress<<std::endl;
-       for(LOCAL_ADDRESS_TYPE increment=0; increment<sizeOFData; increment++) {
-			READ_DATA_TYPE_IN_MEMORY_ARRAY tRead=*(*pointerToReadDataPointer + increment);
-
-			printf("%d , ", tRead);
-
-		}
-		std::cout<<std::endl;
-
-	}
-	return ret;
-}
+//ERROR_RETURN_TYPE dataPartitioning::readData(LOCAL_ADDRESS_TYPE& DataAddress, bool readByMetadat, bool printData, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY** pointerToReadDataPointer, LOCAL_ADDRESS_TYPE& sizeOFData, ID_TYPE layerId, ID_TYPE bankID, ID_TYPE computeSubArrayID ){
+//	ERROR_RETURN_TYPE ret;
+//	if(readByMetadat){ //we should assign value to size by reading metadata
+//
+//		LOCAL_ADDRESS_TYPE startMetadatAddress;
+//
+//		stackObj->layerVector[layerId]->bankVector[bankID]->subarrayVector[computeSubArrayID]->memoryArrayObj->read(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(startMetadatAddress));
+//		DataAddress=metadatatoLocalAddress (startMetadatAddress);
+//		LOCAL_ADDRESS_TYPE endMetadatAddress;
+//		stackObj->layerVector[layerId]->bankVector[bankID]->subarrayVector[computeSubArrayID]->memoryArrayObj->read(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) &(endMetadatAddress));
+//		sizeOFData=metadatatoLocalAddress (endMetadatAddress-startMetadatAddress);
+//		(*pointerToReadDataPointer)= (READ_DATA_TYPE_IN_MEMORY_ARRAY*) calloc(sizeOFData, sizeof(READ_DATA_TYPE_IN_MEMORY_ARRAY));
+//
+//	}else{ //read by size, size is a read value here
+//			}
+//	stackObj->layerVector[layerId]->bankVector[bankID]->subarrayVector[computeSubArrayID]->memoryArrayObj->read(DataAddress, sizeOFData, (*pointerToReadDataPointer));
+//
+//
+//	if(printData){
+//		std::cout<<"_________printing memory array conents in addresss:" <<DataAddress<<std::endl;
+//       for(LOCAL_ADDRESS_TYPE increment=0; increment<sizeOFData; increment++) {
+//			READ_DATA_TYPE_IN_MEMORY_ARRAY tRead=*(*pointerToReadDataPointer + increment);
+//
+//			printf("%d , ", tRead);
+//
+//		}
+//		std::cout<<std::endl;
+//
+//	}
+//	return ret;
+//}
 
 
 

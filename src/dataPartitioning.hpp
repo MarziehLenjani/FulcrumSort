@@ -7,10 +7,8 @@
 
 #ifndef DATAPARTITIONING_HPP_
 #define DATAPARTITIONING_HPP_
-#include "stackedMemory.hpp"
 #include "types.hpp"
 #include "statConfigNamesAndTypes.hpp"
-#include "physicalComponent.hpp"
 #include "statConfigNamesAndTypes.hpp"
 #include <stdio.h>
 #include <iostream>
@@ -20,13 +18,19 @@
 #include <algorithm>
 #include <vector>
 #include <random>
+#include "PhysicalComponent.hpp"
+#include "Stack.hpp"
+
+class PulleySystem;
 
 class dataPartitioning{
 	public:
-	stackedMemory * stackObj;
-	dataPartitioning(stackedMemory * l_stackObj);
+	//Stack * stackObj;
+	//dataPartitioning(Stack * l_stackObj);
+	PulleySystem* devices;
+	dataPartitioning(PulleySystem* devices);
 	ERROR_RETURN_TYPE globalAddressToLocalAddressTranslation(PHYSICAL_EXTERNAL_ADDRESS_TYPE address, ID_TYPE & stackId, ID_TYPE & layerId, ID_TYPE & bankId, ID_TYPE & computeSubarrayID);
-	ERROR_RETURN_TYPE broadcastDataToAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY* broadcastedData, LOCAL_ADDRESS_TYPE sizeOFData );
+	//ERROR_RETURN_TYPE broadcastDataToAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY* broadcastedData, LOCAL_ADDRESS_TYPE sizeOFData );
 	ERROR_RETURN_TYPE partitionEquallyAmongAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY* dataToBePartitionedData, LOCAL_ADDRESS_TYPE sizeOFData );
 	//template functions should be implemented inside hpp files
 
@@ -86,7 +90,7 @@ class dataPartitioning{
 
 	LOCAL_ADDRESS_TYPE localAddressToLocalMetadata(LOCAL_ADDRESS_TYPE localAddress);
 	LOCAL_ADDRESS_TYPE metadatatoLocalAddress(LOCAL_ADDRESS_TYPE localMetadata);
-	ERROR_RETURN_TYPE readData(LOCAL_ADDRESS_TYPE& DataAddress, bool readByMetadat, bool printData, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY** pointerToReadDataPointer, LOCAL_ADDRESS_TYPE& sizeOFData, ID_TYPE layerId, ID_TYPE bankID, ID_TYPE computeSubArrayID);
+	//ERROR_RETURN_TYPE readData(LOCAL_ADDRESS_TYPE& DataAddress, bool readByMetadat, bool printData, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY** pointerToReadDataPointer, LOCAL_ADDRESS_TYPE& sizeOFData, ID_TYPE layerId, ID_TYPE bankID, ID_TYPE computeSubArrayID);
 };
 
 

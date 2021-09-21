@@ -5,13 +5,14 @@
 #include <iostream>
 #include <sstream>
 #include <assert.h>
+
+#include "../src/Bank.hpp"
 #include "vault.hpp"
 #include "memoryArray.hpp"
 #include "walkerDataAndSetting.hpp"
 #include "configAndStats.hpp"
 #include "transferMedium.hpp"
-#include "bank.hpp"
- computSubArray::computSubArray(int subarrayIDt, int memArrSize, vault* t_ownerVault, bank* tOwnerBank,layer* tOwnerLayer){
+ computSubArray::computSubArray(int subarrayIDt, int memArrSize, vault* t_ownerVault, Bank* tOwnerBank,Layer* tOwnerLayer){
 	 ownerVault=t_ownerVault;
 	 subarrayID=subarrayIDt;
 	 ownerBank=tOwnerBank;

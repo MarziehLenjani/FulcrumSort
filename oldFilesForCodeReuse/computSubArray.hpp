@@ -15,8 +15,8 @@ class vault;
 class memoryArray;
 class walkerDataAndSetting;
 class sparseMatrix;
-class bank;
-class layer;
+class Bank;
+class Layer;
 class transferMedium;
 class computSubArray{
 public:
@@ -27,9 +27,9 @@ public:
 	sparseMatrix* matrixPointer;
 	int length=0;
 	vault* ownerVault;
-	bank * ownerBank;
-	layer * ownerLayer;
-	computSubArray(int subarrayIDt, int memArrSize, vault* t_ownerVault, bank* tOwnerBank,layer* tOwnerLayer );
+	Bank * ownerBank;
+	Layer * ownerLayer;
+	computSubArray(int subarrayIDt, int memArrSize, vault* t_ownerVault, Bank* tOwnerBank,Layer* tOwnerLayer );
 	~computSubArray();
 	void computSubArrayAssignData(sparseMatrix * spmPointer , IndexType t_start, int lengtht );
 

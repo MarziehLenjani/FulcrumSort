@@ -1,12 +1,12 @@
 #include <stdio.h>
 #include <iostream>
 #include "configAndStats.hpp"
-#include "physicalComponent.hpp"
-#include "stackedMemory.hpp"
 #include "statConfigNamesAndTypes.hpp"
 #include "dataPartitioning.hpp"
 #include "test.hpp"
 #include <math.h>
+#include "../src/PhysicalComponent.hpp"
+#include "../src/Stack.hpp"
 
 
 //#ifdef USE_THE_MAIN_MAIN
@@ -18,7 +18,7 @@ int main(int argc, char **argv)
 	tests tstObj;
 
 	//----------------------building a 3d stack component
-	stackedMemory stackedMemoryObj((ID_TYPE)0,&confObj, NULL, NULL, NULL);
+	Stack stackedMemoryObj((ID_TYPE)0,&confObj, NULL, NULL, NULL);
 	//-----------------------building dataPartitioning object to its APIs
 	dataPartitioning dataPartitioningObj(&stackedMemoryObj,&confObj);
 
