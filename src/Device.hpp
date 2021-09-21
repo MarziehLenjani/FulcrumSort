@@ -2,23 +2,23 @@
 
 #include <cstdlib>
 #include <vector>
+#include <cassert>
 #include "globals.hpp"
-#include "stackedMemory.hpp"
-#include "physicalComponent.hpp"
+#include "HMCLink.hpp"
+#include "PhysicalComponent.hpp"
+#include "Stack.hpp"
 
-class Device : public physicalComponent {
+class CXLLink;
+
+class Device : public PhysicalComponent {
 public:
-	std::vector<stackedMemory*> stackVector;
+	std::vector<Stack*> stackVector;
 
-	Device(ID_TYPE l_id, physicalComponent* l_parent) : physicalComponent(l_id, l_parent) {
-		for(u64 i = 0; i < G_NUM_STACKS; i++){
-			stackVector.push_back(new stackedMemory(i, this));
-		}
-	}
+	CXLLink* cxlLinks[G_NUM_DEVICES];
 
-	~Device(){
-		for(stackedMemory* it : stackVector){
-			delete it;
-		}
-	}
+	Device(ID_TYPE l_id, PhysicalComponent* l_parent);
+	~Device();
+
+	void initLinks();
+	void runLinkOneClock();
 };

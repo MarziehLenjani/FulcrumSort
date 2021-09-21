@@ -9,7 +9,6 @@
 #define COMPUTSUBARRAY_HPP_
 
 #include <queue>
-#include "physicalComponent.hpp"
 #include <vector>
 #include <algorithm>
 #include "Walker.hpp"
@@ -18,16 +17,20 @@
 #include <omp.h>
 #include <queue>
 #include "Packet.hpp"
+#include "PhysicalComponent.hpp"
 
 #define NUM_WALKERS		3
 
-class configAndStats;
-class stackedMemory;
-class bank;
-class layer;
+
+class PulleySystem;
+class Device;
+class Stack;
+class Layer;
+class Bank;
+
 //class MemoryObject;
 
-class computSubarray:public physicalComponent{
+class Subarray : public PhysicalComponent{
 private:
 	static inline u64 extractRowIndexFromLocalAddress(LOCAL_ADDRESS_TYPE localAddr){
 		return localAddr / G_NUM_BYTES_IN_ROW;
@@ -45,19 +48,25 @@ public:
 	void initialize(LOCAL_ADDRESS_TYPE addressOfTheReadStartAddress,LOCAL_ADDRESS_TYPE addressOfTheReadEndAdddress, LOCAL_ADDRESS_TYPE addressOfTheWriteStartAddress,
 			FULCRU_WORD_TYPE t_RegA, FULCRU_WORD_TYPE t_RegB, FULCRU_WORD_TYPE t_SelfIndex ); //
 
-	computSubarray(ID_TYPE l_id, physicalComponent * l_parent);
-	~computSubarray( );
+	Subarray(ID_TYPE l_id, PhysicalComponent * l_parent);
+	~Subarray( );
 	void runOneSubClokCycle();
 	//memoryArray * memoryArrayObj;
+
 	MemoryObject * memoryArrayObj;
-	stackedMemory * stackedMemoryObj;
-	bank* bankObj;
-	layer * layerObj;
+
+	PulleySystem* pulley;
+	Device* device;
+	Stack * stack;
+	Layer * layer;
+	Bank* bank;
+
+
 	Walker* walkers[NUM_WALKERS];
 
-	std::queue <Packet<PlacementPacket>*>* nextSubarraySameLayerQ = nullptr;
-	std::queue <Packet<PlacementPacket>*>* nextSubarrayUpLayerQ = nullptr;
-	std::queue <Packet<PlacementPacket>*>* nextSubarrayDownLayerQ = nullptr;
+	//std::queue <Packet<PlacementPacket>*>* nextSubarraySameLayerQ = nullptr;
+	//std::queue <Packet<PlacementPacket>*>* nextSubarrayUpLayerQ = nullptr;
+	//std::queue <Packet<PlacementPacket>*>* nextSubarrayDownLayerQ = nullptr;
 
 
 	bool finishedLocalHist = false;
@@ -68,10 +77,12 @@ public:
 
 
 	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQIdeal(ID_TYPE dstId);
-	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQRing(ID_TYPE dstId);
-	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQSemiRing(ID_TYPE dstId);
-	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQCrossbar(ID_TYPE dstId);
-	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQDragonfly(ID_TYPE dstId);
+	//std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQRing(ID_TYPE dstId);
+	//std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQSemiRing(ID_TYPE dstId);
+	//std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQCrossbar(ID_TYPE dstId);
+	//std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQDragonfly(ID_TYPE dstId);
+
+	std::queue <Packet<PlacementPacket>*>* getNextComputeSubArrayQDragonflyNew(ID_TYPE dstId);
 
 
 	//--------------To be implemented functions
@@ -84,10 +95,10 @@ public:
 	bool isProceedRead();
 	bool isProceedWrite();
 
-	void initNextSubarrayRing();
-	void initNextSubarraySemiRing();
-	void initNextSubarrayCrossbar();
-	void initNextSubarrayDragonfly();
+	//void initNextSubarrayRing();
+	//void initNextSubarraySemiRing();
+	//void initNextSubarrayCrossbar();
+	//void initNextSubarrayDragonfly();
 
 
 	template <typename T>
@@ -201,7 +212,7 @@ public:
 			Packet<PlacementPacket>* tmpPacket = incomingPackets.front();
 			incomingPackets.pop();
 			producedPackets++;
-			if(tmpPacket->dstId == SelfIndex){
+			if(tmpPacket->dstSubAddr == SelfIndex){
 				memoryArrayObj->writeX<PlacementPacket>(writeEndAddr, tmpPacket->payload);
 				writeEndAddr += sizeof(PlacementPacket);
 
@@ -214,9 +225,11 @@ public:
 			else{
 				//forward packet
 				hopCounter++;
-				auto nextSubArrayQ = getNextComputeSubArrayQSemiRing(tmpPacket->dstId);
-				//auto nextSubArrayQ = getNextComputeSubArrayQCrossbar(tmpPacket->dstId);
-				//auto nextSubArrayQ = getNextComputeSubArrayQDragonfly(tmpPacket->dstId);
+				//auto nextSubArrayQ = getNextComputeSubArrayQIdeal(tmpPacket->dstSubAddr);
+				//auto nextSubArrayQ = getNextComputeSubArrayQSemiRing(tmpPacket->dstSubAddr);
+				//auto nextSubArrayQ = getNextComputeSubArrayQCrossbar(tmpPacket->dstSubAddr);
+				//auto nextSubArrayQ = getNextComputeSubArrayQDragonfly(tmpPacket->dstSubAddr);
+				auto nextSubArrayQ = getNextComputeSubArrayQDragonflyNew(tmpPacket->dstSubAddr);
 				nextSubArrayQ->push(tmpPacket);
 			}
 		}
@@ -249,7 +262,7 @@ public:
 				LOCAL_ADDRESS_TYPE dstOff = location & ((1UL << locShiftAmt) - 1);
 
 				Packet<PlacementPacket>* tmpPacket = placementPacketAllocator->alloc();
-				tmpPacket->dstId = dstSub;
+				tmpPacket->dstSubAddr = dstSub;
 				tmpPacket->payload.key = key;
 				tmpPacket->payload.offset = dstOff * sizeof(KEY_TYPE);
 

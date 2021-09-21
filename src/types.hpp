@@ -75,10 +75,8 @@ template <typename T1, typename T2> T2 castNoLoss(T1 tmpUnsign){
 
 typedef struct{
 	KEY_TYPE key;
-	LOCAL_ADDRESS_TYPE offset;
+	LOCAL_ADDRESS_TYPE offset;		//address within subarray
 } PlacementPacket;
-
-
 
 
 #endif

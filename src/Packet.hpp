@@ -1,12 +1,21 @@
 #pragma once
 
 #include "types.hpp"
+#include "PacketAddress.hpp"
 
 template <typename T>
 class Packet{
+
+	Packet(){}
+
 public:
-	ID_TYPE dstId;
+	//ID_TYPE dstId;	//destination subarray id within the stack
+	//PacketAddress dstAddr;
+	ID_TYPE dstSubAddr;
 	T payload;
-	Packet(ID_TYPE _dstId, const T& _payload) : dstId(_dstId), payload(_payload){};
+
+	Packet(ID_TYPE dstSubAddr, const T& _payload) : dstSubAddr(dstSubAddr), payload(_payload){
+
+	};
 };
 

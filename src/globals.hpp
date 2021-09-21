@@ -2,23 +2,22 @@
 
 #include <cstdint>
 #include "types.hpp"
-#include "EventQueue.hpp"
-#include "PacketAllocator.hpp"
 #include <string>
 #include <iostream>
 
 // Configuration
-#define G_NUM_DEVICES				2
-#define G_NUM_STACKS				4
-#define G_NUM_LAYERS				8
+#define G_NUM_DEVICES				4
+#define G_NUM_STACKS_PER_DEVICE		4
+#define G_NUM_LAYERS_PER_STACK		8
 #define G_NUM_BANKS_PER_LAYER		64
 #define G_NUM_SUBARRAY_PER_BANK		16
-//#define G_NUM_LAYERS				1
-//#define G_NUM_BANKS_PER_LAYER		2
-//#define G_NUM_SUBARRAY_PER_BANK		2
 #define G_SIZE_OF_SUBARRAY_IN_BYTE	(1024*1024UL)
 
-#define G_NUM_TOTAL_SUBARRAY		(G_NUM_LAYERS * G_NUM_BANKS_PER_LAYER * G_NUM_SUBARRAY_PER_BANK)
+
+#define G_NUM_TOTAL_STACKS			(G_NUM_DEVICES * G_NUM_STACKS_PER_DEVICE)
+#define G_NUM_TOTAL_LAYERS			(G_NUM_TOTAL_STACKS * G_NUM_LAYERS_PER_STACK)
+#define G_NUM_TOTAL_BANKS			(G_NUM_TOTAL_LAYERS * G_NUM_BANKS_PER_LAYER)
+#define G_NUM_TOTAL_SUBARRAY		(G_NUM_TOTAL_BANKS * G_NUM_SUBARRAY_PER_BANK)
 
 //#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 1024)
 
@@ -38,7 +37,17 @@
 #define G_REDUCTION_PER_HIST_ELEM_CYCLES			1
 #define G_OFFSET_PER_HIST_ELEM_CYCLES				1
 
+#define G_SYSTEM_CLOCK_PERIOD_NS					0.8
 
+#define G_HMC_LINK_EFFICIENCY						0.8
+#define G_HMC_LINK_PAYLOAD_BANDWIDTH_GB				(60.0 * 8 / 9 * G_HMC_LINK_EFFICIENCY)
+#define G_HMC_LINK_PAYLOAD_SIZE						8
+#define G_HMC_LINK_PACKET_PER_CLOCK					(G_HMC_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_HMC_LINK_PAYLOAD_SIZE)
+
+#define G_CXL_LINK_EFFICIENCY						0.8
+#define G_CXL_LINK_PAYLOAD_BANDWIDTH_GB				(32 * G_CXL_LINK_EFFICIENCY)
+#define G_CXL_LINK_PAYLOAD_SIZE						8
+#define G_CXL_LINK_PACKET_PER_CLOCK					(G_CXL_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_CXL_LINK_PAYLOAD_SIZE)
 
 extern u64 stateCounter[16];
 
@@ -94,6 +103,8 @@ extern LOCAL_ADDRESS_TYPE histEndAddr;
 extern KEY_TYPE* dataArray;
 
 extern u64 locShiftAmt;
+
+#include "PacketAllocator.hpp"
 extern PacketAllocator<PlacementPacket>* placementPacketAllocator;
 
 extern u64 placementRowHit;
@@ -129,6 +140,43 @@ static bool radixComp(KEY_TYPE a, KEY_TYPE b){
 	b = (b & radixSortMask) >> radixSortShift;
 	return a < b;
 }
+
+constexpr ID_TYPE extractSubId(ID_TYPE dstSubAddr){
+	return dstSubAddr % G_NUM_SUBARRAY_PER_BANK;
+}
+
+constexpr ID_TYPE extractUptoBank(ID_TYPE dstSubAddr){
+	return dstSubAddr / G_NUM_SUBARRAY_PER_BANK;
+}
+
+constexpr ID_TYPE extractUptoLayer(ID_TYPE dstSubAddr){
+	return dstSubAddr / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
+}
+
+constexpr ID_TYPE extractUptoStack(ID_TYPE dstSubAddr){
+	return dstSubAddr / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER * G_NUM_LAYERS_PER_STACK);
+}
+
+constexpr ID_TYPE extractUptoDevice(ID_TYPE dstSubAddr){
+	return (dstSubAddr / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER * G_NUM_LAYERS_PER_STACK * G_NUM_STACKS_PER_DEVICE));
+}
+
+constexpr ID_TYPE extractBankId(ID_TYPE dstSubAddr){
+	return extractUptoBank(dstSubAddr) % G_NUM_BANKS_PER_LAYER;
+}
+
+constexpr ID_TYPE extractLayerId(ID_TYPE dstSubAddr){
+	return extractUptoLayer(dstSubAddr) % G_NUM_LAYERS_PER_STACK;
+}
+
+constexpr ID_TYPE extractStackId(ID_TYPE dstSubAddr){
+	return extractUptoStack(dstSubAddr) % G_NUM_STACKS_PER_DEVICE;
+}
+
+constexpr ID_TYPE extractDeviceId(ID_TYPE dstSubAddr){
+	return  extractUptoDevice(dstSubAddr);
+}
+
 
 
 

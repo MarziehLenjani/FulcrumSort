@@ -1,14 +1,14 @@
 #include <stdio.h>
 #include <iostream>
-#include "physicalComponent.hpp"
-#include "stackedMemory.hpp"
 #include "statConfigNamesAndTypes.hpp"
 #include "dataPartitioning.hpp"
 #include "test.hpp"
-#include "computSubarray.hpp"
 #include "Device.hpp"
-#include "CombinedDevices.hpp"
 #include <math.h>
+#include "PulleySystem.hpp"
+#include "PhysicalComponent.hpp"
+#include "Stack.hpp"
+#include "Subarray.hpp"
 #include <cassert>
 #include <algorithm>
 #include <random>
@@ -36,16 +36,25 @@ int main(int argc, char **argv)
 
     assert((G_NUM_BANKS_PER_LAYER % 2) == 0);
 
-    //----------------------building a 3d stack component
-	stackedMemory stackedMemoryObj((ID_TYPE)0, NULL);
-	//-----------------------building dataPartitioning object to its APIs
-	dataPartitioning dataPartitioningObj(&stackedMemoryObj);
-
 	//----------------
 	CONF_TEST_NUMBER_TYPE testNumber = 0;
 	initDragonfly();
 
+	cout << "Total devices: " << G_NUM_DEVICES << endl;
+	cout << "Total stacks: " << G_NUM_TOTAL_STACKS << endl;
+	cout << "Total layers: " << G_NUM_TOTAL_LAYERS << endl;
+	cout << "Total banks: " << G_NUM_TOTAL_BANKS << endl;
+	cout << "Total subarrays: " << G_NUM_TOTAL_SUBARRAY << endl;
+
+
 	if(testNumber==(CONF_TEST_NUMBER_TYPE)0){
+
+		PulleySystem pulley(0, nullptr);
+
+
+		//-----------------------building dataPartitioning object to its APIs
+		dataPartitioning dataPartitioningObj(&pulley);
+
 		int maxNumClockCycle=100000;
 
 		int minRand = 0;
@@ -61,8 +70,8 @@ int main(int argc, char **argv)
 		// [metadata] is organized as:
 		// [hist_start_addr] [hist_end_addr] [read_start_addr] [read_end_addr] [write_start_addr] [write_end_addr] ... others
 
-		cout << "Total compute subarrays: " << G_NUM_TOTAL_SUBARRAY << endl;
-		cout << "Data elements: " << G_NUM_OF_DATA_ELEMENTS << endl;
+
+		cout << "Total data elements: " << G_NUM_OF_DATA_ELEMENTS << endl;
 		cout << endl << endl;
 
 		placementPacketAllocator = new PacketAllocator<PlacementPacket>(G_NUM_OF_DATA_ELEMENTS);
@@ -97,15 +106,12 @@ int main(int argc, char **argv)
 		//check if the end of write array fits within the subarray
 		assert((writeStartAddr + reservedBytesForReadWriteArray) <=	G_SIZE_OF_SUBARRAY_IN_BYTE);
 
-		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+		for(Subarray* sub : pulley.subarrayVector){
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_START_ADDR, histStartAddr);
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_END_ADDR, histEndAddr);
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_READ_START_ADDR, readStartAddr);
 			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_WRITE_START_ADDR, writeStartAddr);
 		}
-
-		// Initialize Subarrays selfindexes
-		stackedMemoryObj.initializeSubarraysSelfindexes();
 
 		ERROR_RETURN_TYPE ret = dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, readStartAddr, writeMetadat, G_ADDR_OF_READ_START_ADDR, G_ADDR_OF_READ_END_ADDR, G_NUM_OF_DATA_ELEMENTS);
 
@@ -136,7 +142,7 @@ int main(int argc, char **argv)
 			radixSortMask = radixSortMask = (1UL << radixEndBit) - (1UL << radixSortShift);
 
 			// Only approximately model local sort time
-			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+			for(Subarray* sub : pulley.subarrayVector){
 				sub->runLocalRadixSort();
 				//sub->printReadElements();
 			}
@@ -146,7 +152,7 @@ int main(int argc, char **argv)
 			printSimCycle("\tFinished local sort");
 
 			// Initialization that are needed only once per radix bits
-			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+			for(Subarray* sub : pulley.subarrayVector){
 				sub->initPerRadix();
 			}
 
@@ -171,7 +177,7 @@ int main(int argc, char **argv)
 //				}
 
 				u64 maxElemProcessed = 0;
-				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+				for(Subarray* sub : pulley.subarrayVector){
 					u64 elemProcessed = sub->runLocalHist();
 					if(elemProcessed > maxElemProcessed){
 						maxElemProcessed = elemProcessed;
@@ -188,8 +194,8 @@ int main(int argc, char **argv)
 
 				//----------------------------------- Histogram Reduction -------------------------------------
 				for(u64 i = 1; i < G_NUM_TOTAL_SUBARRAY; i++){
-					HIST_ELEM_TYPE* currSubHist = (HIST_ELEM_TYPE*)(stackedMemoryObj.computSubarrayVector[i]->memoryArrayObj->data + histStartAddr);
-					HIST_ELEM_TYPE* prevSubHist = (HIST_ELEM_TYPE*)(stackedMemoryObj.computSubarrayVector[i-1]->memoryArrayObj->data + histStartAddr);
+					HIST_ELEM_TYPE* currSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i]->memoryArrayObj->data + histStartAddr);
+					HIST_ELEM_TYPE* prevSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i-1]->memoryArrayObj->data + histStartAddr);
 
 					for(u64 j = 0; j < G_NUM_HIST_ELEMS; j++){
 						currSubHist[j] += prevSubHist[j];
@@ -203,14 +209,14 @@ int main(int argc, char **argv)
 				//Calculate prefix sum of the last subarray
 				HIST_ELEM_TYPE prefixSum[G_NUM_HIST_ELEMS];
 				prefixSum[0] = lastIdx;
-				HIST_ELEM_TYPE* lastSubHist = (HIST_ELEM_TYPE*)(stackedMemoryObj.computSubarrayVector[G_NUM_TOTAL_SUBARRAY-1]->memoryArrayObj->data + histStartAddr);
+				HIST_ELEM_TYPE* lastSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[G_NUM_TOTAL_SUBARRAY-1]->memoryArrayObj->data + histStartAddr);
 				for(u64 i = 1; i < G_NUM_HIST_ELEMS; i++){
 					prefixSum[i] = prefixSum[i-1] + lastSubHist[i-1];
 				}
 				lastIdx = prefixSum[G_NUM_HIST_ELEMS - 1] + lastSubHist[G_NUM_HIST_ELEMS - 1];
 
 				//Add offset to get final location
-				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+				for(Subarray* sub : pulley.subarrayVector){
 					HIST_ELEM_TYPE* histArray = (HIST_ELEM_TYPE*)(sub->memoryArrayObj->data + histStartAddr);
 					for(u64 i = 0; i < G_NUM_HIST_ELEMS; i++){
 						histArray[i] += prefixSum[i];
@@ -231,15 +237,22 @@ int main(int argc, char **argv)
 				numOfInFlightPackets = 0;
 				producedPackets = 0;
 
-				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+				for(Subarray* sub : pulley.subarrayVector){
 					sub->initPrePlacementPerRange();
 				}
 
 				while((numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY) || (numOfInFlightPackets != 0)){
-					for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+					for(Subarray* sub : pulley.subarrayVector){
 						sub->runPrePlacementConsumerOneCycle();
 						sub->runPrePlacementProducerOneCycle();
 					}
+					for(LogicLayer* logicLayer : pulley.logicLayerVector){
+						logicLayer->runOneCycle();
+					}
+					for(Device* dev : pulley.deviceVector){
+						dev->runLinkOneClock();
+					}
+
 					simCycles++;
 					totalSimCyclesPrePlacement++;
 					totWaitCyclesInQ += numOfInFlightPackets;
@@ -250,12 +263,12 @@ int main(int argc, char **argv)
 
 			//--------------------------------------- Placement ------------------------------------------
 			numOfProcessedSubarrays = 0;
-			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+			for(Subarray* sub : pulley.subarrayVector){
 				sub->initPlacementPerRadix();
 			}
 
 			while(numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY){
-				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+				for(Subarray* sub : pulley.subarrayVector){
 					sub->runPlacementOneCycle();
 				}
 				simCycles++;
@@ -296,27 +309,29 @@ int main(int argc, char **argv)
 		delete placementPacketAllocator;
 
 		//Check validity of output
+		sort(dataArray, dataArray + G_NUM_OF_DATA_ELEMENTS);
+
 		//1. Merge output of subarrays
-		vector<KEY_TYPE> outData;
-		outData.reserve(G_NUM_OF_DATA_ELEMENTS);
-		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
+		//vector<KEY_TYPE> outData;
+		//outData.reserve(G_NUM_OF_DATA_ELEMENTS);
+		u64 currIdx = 0;
+		for(Subarray* sub : pulley.subarrayVector){
 			LOCAL_ADDRESS_TYPE startAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
 			LOCAL_ADDRESS_TYPE endAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR);
 			while(startAddr < endAddr){
-				outData.push_back(sub->memoryArrayObj->readKey(startAddr));
+				//outData.push_back(sub->memoryArrayObj->readKey(startAddr));
+				KEY_TYPE out = sub->memoryArrayObj->readKey(startAddr);
+				if(out != dataArray[currIdx]){
+					cout << "[FAIL at " << currIdx << "] expected: " << dataArray[currIdx] << "       actual: " << out << endl;
+					free(dataArray);
+					return -1;
+				}
+				currIdx++;
 				startAddr += sizeof(KEY_TYPE);
 			}
 		}
 
-		assert(outData.size() == G_NUM_OF_DATA_ELEMENTS);
-
-		sort(dataArray, dataArray + G_NUM_OF_DATA_ELEMENTS);
-		for(u64 i = 0; i < G_NUM_OF_DATA_ELEMENTS; i++){
-			if(dataArray[i] != outData[i]){
-				cout << "[FAIL at " << i << "] expected: " << dataArray[i] << "       actual: " << outData[i] << endl;
-				return -1;
-			}
-		}
+		assert(currIdx == G_NUM_OF_DATA_ELEMENTS);
 
 		cout << "State counters: " << endl;
 		for(u64 i = 0; i < 8; i++){
@@ -334,6 +349,7 @@ int main(int argc, char **argv)
 
 		cout << "[VALIDITY CHECK PASSED]" << endl;
 	}
+
 //	else if(testNumber==(CONF_TEST_NUMBER_TYPE)1){
 //		int maxNumClockCycle=1000; //temp required before implementation ends
 //
