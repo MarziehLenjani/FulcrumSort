@@ -1,9 +1,9 @@
 
+#include "NVLink.hpp"
 #include "LogicLayer.hpp"
 #include "HMCLink.hpp"
 #include "Stack.hpp"
 #include "Device.hpp"
-#include "CXLLink.hpp"
 
 LogicLayer::LogicLayer(PhysicalComponent * parent) : PhysicalComponent(parent->id, parent) {
 	for(u64 i = 0; i < G_NUM_STACKS_PER_DEVICE; i++){

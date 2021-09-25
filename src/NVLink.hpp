@@ -9,15 +9,15 @@
 #include "Device.hpp"
 #include "Stack.hpp"
 
-class CXLLink {
+class NVLink {
 	double currPacketLim = 0;
 
 	std::queue <Packet<PlacementPacket>* > inQ;
 	Device* outDevice = nullptr;
 
 public:
-	CXLLink(Device* outDevice) : outDevice(outDevice) {
-		assert(G_CXL_LINK_PACKET_PER_CLOCK >= 1);	//Assumes send one or more packet per clock cycle
+	NVLink(Device* outDevice) : outDevice(outDevice) {
+		assert(G_NV_LINK_PACKET_PER_CLOCK >= 1);	//Assumes send one or more packet per clock cycle
 		//TODO: fix if multiple clock cycles are needed to send a packet
 	}
 
@@ -36,7 +36,7 @@ public:
 			currPacketLim--;
 		}
 		if(!inQ.empty()){
-			currPacketLim += G_CXL_LINK_PACKET_PER_CLOCK;
+			currPacketLim += G_NV_LINK_PACKET_PER_CLOCK;
 		}
 		else{
 			currPacketLim = 0;

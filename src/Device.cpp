@@ -1,6 +1,6 @@
 
+#include "NVLink.hpp"
 #include "Device.hpp"
-#include "CXLLink.hpp"
 #include "PulleySystem.hpp"
 
 
@@ -31,7 +31,7 @@ void Device::initLinks(){
 	PulleySystem* pulley = (PulleySystem*) parent;
 	for(u64 i = 0; i < G_NUM_DEVICES; i++){
 		if(i != id){
-			cxlLinks[i] = new CXLLink(pulley->deviceVector[i]);
+			cxlLinks[i] = new NVLink(pulley->deviceVector[i]);
 		}
 	}
 }
