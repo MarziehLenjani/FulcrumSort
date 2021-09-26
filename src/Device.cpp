@@ -9,7 +9,7 @@ Device::Device(ID_TYPE l_id, PhysicalComponent* l_parent) : PhysicalComponent(l_
 		stackVector.push_back(new Stack(i, this));
 	}
 	for(u64 i = 0; i < G_NUM_DEVICES; i++){
-		cxlLinks[i] = nullptr;
+		nvLinks[i] = nullptr;
 	}
 }
 
@@ -19,9 +19,9 @@ Device::~Device(){
 	}
 
 	for(u64 i = 0; i < G_NUM_DEVICES; i++){
-		if(cxlLinks[i] != nullptr){
-			delete cxlLinks[i];
-			cxlLinks[i] = nullptr;
+		if(nvLinks[i] != nullptr){
+			delete nvLinks[i];
+			nvLinks[i] = nullptr;
 		}
 	}
 }
@@ -31,7 +31,7 @@ void Device::initLinks(){
 	PulleySystem* pulley = (PulleySystem*) parent;
 	for(u64 i = 0; i < G_NUM_DEVICES; i++){
 		if(i != id){
-			cxlLinks[i] = new NVLink(pulley->deviceVector[i]);
+			nvLinks[i] = new NVLink(pulley->deviceVector[i]);
 		}
 	}
 }
@@ -39,7 +39,7 @@ void Device::initLinks(){
 void Device::runLinkOneClock(){
 	for(u64 i = 0; i < G_NUM_DEVICES; i++){
 		if(i != id){
-			cxlLinks[i]->clock();
+			nvLinks[i]->clock();
 		}
 	}
 }

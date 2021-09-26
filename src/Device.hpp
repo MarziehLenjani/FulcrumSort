@@ -14,7 +14,7 @@ class Device : public PhysicalComponent {
 public:
 	std::vector<Stack*> stackVector;
 
-	NVLink* cxlLinks[G_NUM_DEVICES];
+	NVLink* nvLinks[G_NUM_DEVICES];
 
 	Device(ID_TYPE l_id, PhysicalComponent* l_parent);
 	~Device();

@@ -28,8 +28,8 @@ public:
 		while(!inQ.empty() && (currPacketLim >= 1)){
 			auto pkt = inQ.front();
 			inQ.pop();
-			u64 dstBank = extractBankId(pkt->dstSubAddr);
-			outStack->layerVector[0]->bankVector[dstBank]->subarrayVector[0]->incomingPackets.push(pkt);
+			u64 dstBank = extractBankId(pkt->dstBankAddr);
+			outStack->layerVector[0]->bankVector[dstBank]->packetQ.push(pkt);
 			currPacketLim--;
 		}
 		if(!inQ.empty()){

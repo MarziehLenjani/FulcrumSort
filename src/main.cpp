@@ -12,6 +12,7 @@
 #include <cassert>
 #include <algorithm>
 #include <random>
+#include <omp.h>
 
 using namespace std;
 
@@ -25,7 +26,8 @@ int main(int argc, char **argv)
 		exit(-1);
 	}
 
-	u64 G_NUM_OF_DATA_ELEMENTS = atol(argv[1]) * G_NUM_TOTAL_SUBARRAY;
+	elemPerSubarray = atol(argv[1]);
+	u64 G_NUM_OF_DATA_ELEMENTS = elemPerSubarray * G_NUM_TOTAL_SUBARRAY;
 
 	u64 totalSimCyclesLocalSort = 0;
 	u64 totalSimCyclesHistGen = 0;
@@ -55,8 +57,6 @@ int main(int argc, char **argv)
 		//-----------------------building dataPartitioning object to its APIs
 		dataPartitioning dataPartitioningObj(&pulley);
 
-		int maxNumClockCycle=100000;
-
 		int minRand = 0;
 		int maxRand = ((1UL << G_KEY_BITS) - 1);
 		int seed = 56;
@@ -74,46 +74,49 @@ int main(int argc, char **argv)
 		cout << "Total data elements: " << G_NUM_OF_DATA_ELEMENTS << endl;
 		cout << endl << endl;
 
-		placementPacketAllocator = new PacketAllocator<PlacementPacket>(G_NUM_OF_DATA_ELEMENTS);
+		//placementPacketAllocator = new PacketAllocator<PlacementPacket>(G_NUM_OF_DATA_ELEMENTS);
+		packetPool = (Packet<PlacementPacket>*)malloc(G_NUM_OF_DATA_ELEMENTS * sizeof(Packet<PlacementPacket>));
 
 		// Initialize known meta data
-		histStartAddr = G_NUM_BYTES_IN_ROW;		//start of 2nd row
-		histEndAddr = histStartAddr + G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE);
+		//histStartAddr = G_NUM_BYTES_IN_ROW;		//start of 2nd row
+		//histEndAddr = histStartAddr + G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE);
 
 		//read array starts right after the histogram's reserved space
 		//read end address is filled by partition function
-		u64 readStartAddr = ceil(histEndAddr * 1.0 / G_NUM_BYTES_IN_ROW) * G_NUM_BYTES_IN_ROW;
+		//u64 readStartAddr = ceil(histEndAddr * 1.0 / G_NUM_BYTES_IN_ROW) * G_NUM_BYTES_IN_ROW;
 
 		//check the alignment of readStartAddr (should be aligned to a row)
-		u64 rowMask = G_NUM_BYTES_IN_ROW - 1;
-		assert((readStartAddr & rowMask) == 0UL);
+		//u64 rowMask = G_NUM_BYTES_IN_ROW - 1;
+		//assert((readStartAddr & rowMask) == 0UL);
 
-		u64 maxElemsPerSubarray = G_NUM_OF_DATA_ELEMENTS / G_NUM_TOTAL_SUBARRAY;
-		if(G_NUM_OF_DATA_ELEMENTS % G_NUM_TOTAL_SUBARRAY){
-			maxElemsPerSubarray++;
-		}
-		reservedBytesForReadWriteArray = maxElemsPerSubarray * sizeof(KEY_TYPE);
+		//u64 maxElemsPerSubarray = G_NUM_OF_DATA_ELEMENTS / G_NUM_TOTAL_SUBARRAY;
+		//if(G_NUM_OF_DATA_ELEMENTS % G_NUM_TOTAL_SUBARRAY){
+		//	maxElemsPerSubarray++;
+		//}
+		//reservedBytesForReadWriteArray = maxElemsPerSubarray * sizeof(KEY_TYPE);
 		//Reserved bytes should be a power of two, and should be aligned to a row.
 		//This is to make sure that placement location can be calculated with bitwise operations rather than division/mod.
-		reservedBytesForReadWriteArray = getNextPow2(reservedBytesForReadWriteArray, G_NUM_BYTES_IN_ROW);
-		locShiftAmt = round(log2(reservedBytesForReadWriteArray / sizeof(KEY_TYPE)));
+		//reservedBytesForReadWriteArray = getNextPow2(reservedBytesForReadWriteArray, G_NUM_BYTES_IN_ROW);
+		//locShiftAmt = round(log2(reservedBytesForReadWriteArray / sizeof(KEY_TYPE)));
+		locShiftAmt = round(log2(elemPerSubarray));
 
-		u64 writeStartAddr = readStartAddr + reservedBytesForReadWriteArray;
+		//u64 writeStartAddr = readStartAddr + reservedBytesForReadWriteArray;
 
 		//check the alignment of writeStartAddr (should be aligned to a row)
-		assert((writeStartAddr & rowMask) == 0UL);
+		//assert((writeStartAddr & rowMask) == 0UL);
 
 		//check if the end of write array fits within the subarray
-		assert((writeStartAddr + reservedBytesForReadWriteArray) <=	G_SIZE_OF_SUBARRAY_IN_BYTE);
+		//assert((writeStartAddr + reservedBytesForReadWriteArray) <=	G_SIZE_OF_SUBARRAY_IN_BYTE);
 
-		for(Subarray* sub : pulley.subarrayVector){
-			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_START_ADDR, histStartAddr);
-			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_END_ADDR, histEndAddr);
-			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_READ_START_ADDR, readStartAddr);
-			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_WRITE_START_ADDR, writeStartAddr);
-		}
+//		#pragma omp parallel for
+//		for(Subarray* sub : pulley.subarrayVector){
+//			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_START_ADDR, histStartAddr);
+//			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_HIST_END_ADDR, histEndAddr);
+//			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_READ_START_ADDR, readStartAddr);
+//			sub->writeData<LOCAL_ADDRESS_TYPE>(G_ADDR_OF_WRITE_START_ADDR, writeStartAddr);
+//		}
 
-		ERROR_RETURN_TYPE ret = dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, readStartAddr, writeMetadat, G_ADDR_OF_READ_START_ADDR, G_ADDR_OF_READ_END_ADDR, G_NUM_OF_DATA_ELEMENTS);
+		ERROR_RETURN_TYPE ret = dataPartitioningObj.generateRandomlyAndPartitionEquallyAmongAllComputeSubArray (minRand, maxRand, seed, G_NUM_OF_DATA_ELEMENTS);
 
 //		cout << "Initial: " << endl;
 //		for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
@@ -142,16 +145,18 @@ int main(int argc, char **argv)
 			radixSortMask = radixSortMask = (1UL << radixEndBit) - (1UL << radixSortShift);
 
 			// Only approximately model local sort time
+			#pragma omp parallel for
 			for(Subarray* sub : pulley.subarrayVector){
 				sub->runLocalRadixSort();
 				//sub->printReadElements();
 			}
-			currStepCycles = G_LOCAL_SORT_INIT_CYCLES + (reservedBytesForReadWriteArray / sizeof(KEY_TYPE)) * (radixEndBit - radixStartBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
+			currStepCycles = G_LOCAL_SORT_INIT_CYCLES + elemPerSubarray * (radixEndBit - radixStartBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
 			simCycles += currStepCycles;
 			totalSimCyclesLocalSort += currStepCycles;
 			printSimCycle("\tFinished local sort");
 
 			// Initialization that are needed only once per radix bits
+			#pragma omp parallel for
 			for(Subarray* sub : pulley.subarrayVector){
 				sub->initPerRadix();
 			}
@@ -176,14 +181,11 @@ int main(int argc, char **argv)
 //					simCycles++;
 //				}
 
-				u64 maxElemProcessed = 0;
-				for(Subarray* sub : pulley.subarrayVector){
-					u64 elemProcessed = sub->runLocalHist();
-					if(elemProcessed > maxElemProcessed){
-						maxElemProcessed = elemProcessed;
-					}
+				#pragma omp parallel for
+				for(Bank* bank : pulley.bankVector){
+					bank->runLocalHist();
 				}
-				currStepCycles = (maxElemProcessed * G_LOCAL_HIST_CYCLES_PER_ELEM) + (G_LOCAL_HIST_RESET_CYCLES_PER_ELEM * G_NUM_HIST_ELEMS);
+				currStepCycles = (elemPerSubarray * G_LOCAL_HIST_CYCLES_PER_ELEM) + (G_LOCAL_HIST_RESET_CYCLES_PER_ELEM * G_NUM_HIST_ELEMS);
 				simCycles += currStepCycles;
 				totalSimCyclesHistGen += currStepCycles;
 				printSimCycle("\t\tFinished building local histogram");
@@ -193,12 +195,21 @@ int main(int argc, char **argv)
 
 
 				//----------------------------------- Histogram Reduction -------------------------------------
-				for(u64 i = 1; i < G_NUM_TOTAL_SUBARRAY; i++){
-					HIST_ELEM_TYPE* currSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i]->memoryArrayObj->data + histStartAddr);
-					HIST_ELEM_TYPE* prevSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i-1]->memoryArrayObj->data + histStartAddr);
+//				for(u64 i = 1; i < G_NUM_TOTAL_SUBARRAY; i++){
+//					HIST_ELEM_TYPE* currSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i]->memoryArrayObj->data + histStartAddr);
+//					HIST_ELEM_TYPE* prevSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i-1]->memoryArrayObj->data + histStartAddr);
+//
+//					for(u64 j = 0; j < G_NUM_HIST_ELEMS; j++){
+//						currSubHist[j] += prevSubHist[j];
+//					}
+//				}
+
+				for(u64 i = 1; i < G_NUM_TOTAL_BANKS; i++){
+					HIST_ELEM_TYPE* currBankHist = pulley.bankVector[i]->histogram;
+					HIST_ELEM_TYPE* prevBankHist = pulley.bankVector[i-1]->histogram;
 
 					for(u64 j = 0; j < G_NUM_HIST_ELEMS; j++){
-						currSubHist[j] += prevSubHist[j];
+						currBankHist[j] += prevBankHist[j];
 					}
 				}
 				//Approximate the timing of histogram reduction. Can be done because the accesses are sequential.
@@ -209,15 +220,22 @@ int main(int argc, char **argv)
 				//Calculate prefix sum of the last subarray
 				HIST_ELEM_TYPE prefixSum[G_NUM_HIST_ELEMS];
 				prefixSum[0] = lastIdx;
-				HIST_ELEM_TYPE* lastSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[G_NUM_TOTAL_SUBARRAY-1]->memoryArrayObj->data + histStartAddr);
+				HIST_ELEM_TYPE* lastBankHist = pulley.bankVector[G_NUM_TOTAL_BANKS-1]->histogram;
 				for(u64 i = 1; i < G_NUM_HIST_ELEMS; i++){
-					prefixSum[i] = prefixSum[i-1] + lastSubHist[i-1];
+					prefixSum[i] = prefixSum[i-1] + lastBankHist[i-1];
 				}
-				lastIdx = prefixSum[G_NUM_HIST_ELEMS - 1] + lastSubHist[G_NUM_HIST_ELEMS - 1];
+				lastIdx = prefixSum[G_NUM_HIST_ELEMS - 1] + lastBankHist[G_NUM_HIST_ELEMS - 1];
 
 				//Add offset to get final location
-				for(Subarray* sub : pulley.subarrayVector){
-					HIST_ELEM_TYPE* histArray = (HIST_ELEM_TYPE*)(sub->memoryArrayObj->data + histStartAddr);
+//				for(Subarray* sub : pulley.subarrayVector){
+//					HIST_ELEM_TYPE* histArray = (HIST_ELEM_TYPE*)(sub->memoryArrayObj->data + histStartAddr);
+//					for(u64 i = 0; i < G_NUM_HIST_ELEMS; i++){
+//						histArray[i] += prefixSum[i];
+//					}
+//				}
+				#pragma omp parallel for
+				for(Bank* bank : pulley.bankVector){
+					HIST_ELEM_TYPE* histArray = bank->histogram;
 					for(u64 i = 0; i < G_NUM_HIST_ELEMS; i++){
 						histArray[i] += prefixSum[i];
 					}
@@ -230,21 +248,16 @@ int main(int argc, char **argv)
 
 
 				//--------------------------------------- Pre-placement ------------------------------------------
-//				for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
-//					sub->printReadElements();
-//				}
-				numOfProcessedSubarrays = 0;
-				numOfInFlightPackets = 0;
-				producedPackets = 0;
-
-				for(Subarray* sub : pulley.subarrayVector){
-					sub->initPrePlacementPerRange();
+				#pragma omp parallel for
+				for(Bank* bank : pulley.bankVector){
+					bank->prePlacementProducePackets();
 				}
 
-				while((numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY) || (numOfInFlightPackets != 0)){
-					for(Subarray* sub : pulley.subarrayVector){
-						sub->runPrePlacementConsumerOneCycle();
-						sub->runPrePlacementProducerOneCycle();
+				numOfInFlightPackets = G_NUM_OF_DATA_ELEMENTS;
+
+				while(numOfInFlightPackets != 0){
+					for(Bank* bank : pulley.bankVector){
+						bank->prePlacementConsumePacketsOneCycle();
 					}
 					for(LogicLayer* logicLayer : pulley.logicLayerVector){
 						logicLayer->runOneCycle();
@@ -255,19 +268,21 @@ int main(int argc, char **argv)
 
 					simCycles++;
 					totalSimCyclesPrePlacement++;
-					totWaitCyclesInQ += numOfInFlightPackets;
+					//totWaitCyclesInQ += numOfInFlightPackets;
 				}
 				//cout << "Produced packets: " << producedPackets << endl;
 				printSimCycle("\t\tFinished Pre-placement");
 			}
 
 			//--------------------------------------- Placement ------------------------------------------
-			numOfProcessedSubarrays = 0;
+			#pragma omp parallel for
 			for(Subarray* sub : pulley.subarrayVector){
 				sub->initPlacementPerRadix();
 			}
 
+			numOfProcessedSubarrays = 0;
 			while(numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY){
+				#pragma omp parallel for
 				for(Subarray* sub : pulley.subarrayVector){
 					sub->runPlacementOneCycle();
 				}
@@ -306,7 +321,9 @@ int main(int argc, char **argv)
 		cout << "    Pre-palcement cycles: " << totalSimCyclesPrePlacement << " (" << totalSimCyclesPrePlacement * 100.0 / totalCycles << " %)" << endl;
 		cout << "        Placement cycles: " << totalSimCyclesPlacement << " (" << totalSimCyclesPlacement * 100.0 / totalCycles << " %)" << endl;
 
-		delete placementPacketAllocator;
+		//delete placementPacketAllocator;
+		free(packetPool);
+		packetPool = nullptr;
 
 		//Check validity of output
 		sort(dataArray, dataArray + G_NUM_OF_DATA_ELEMENTS);
@@ -316,36 +333,31 @@ int main(int argc, char **argv)
 		//outData.reserve(G_NUM_OF_DATA_ELEMENTS);
 		u64 currIdx = 0;
 		for(Subarray* sub : pulley.subarrayVector){
-			LOCAL_ADDRESS_TYPE startAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
-			LOCAL_ADDRESS_TYPE endAddr = sub->memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR);
-			while(startAddr < endAddr){
+			for(u64 i = 0; i < elemPerSubarray; i++){
 				//outData.push_back(sub->memoryArrayObj->readKey(startAddr));
-				KEY_TYPE out = sub->memoryArrayObj->readKey(startAddr);
+				KEY_TYPE out = sub->keys[i];
 				if(out != dataArray[currIdx]){
 					cout << "[FAIL at " << currIdx << "] expected: " << dataArray[currIdx] << "       actual: " << out << endl;
 					free(dataArray);
 					return -1;
 				}
 				currIdx++;
-				startAddr += sizeof(KEY_TYPE);
 			}
 		}
 
 		assert(currIdx == G_NUM_OF_DATA_ELEMENTS);
 
-		cout << "State counters: " << endl;
-		for(u64 i = 0; i < 8; i++){
-			cout << stateCounter[i] * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
-		}
+//		cout << "State counters: " << endl;
+//		for(u64 i = 0; i < 8; i++){
+//			cout << stateCounter[i] * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
+//		}
 
-		cout << endl << "Average hop count: " << hopCounter * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
-		cout << endl << "Average wait cycles in Q: " << totWaitCyclesInQ * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
+//		cout << endl << "Average hop count: " << hopCounter * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
+//		cout << endl << "Average wait cycles in Q: " << totWaitCyclesInQ * 1.0 / G_NUM_OF_DATA_ELEMENTS << endl;
 
 		//cout << endl << "Placement row accesses: " << placementRowMiss + placementRowHit << endl;
-		cout << endl << "Placement row hits: " << placementRowHit - placementRowMiss << endl;
-		cout << "Placement row misses: " << placementRowMiss << endl;
-
-		cout << endl << "Max queue size: " << maxQueueLoad << endl;
+//		cout << endl << "Placement row hits: " << placementRowHit - placementRowMiss << endl;
+//		cout << "Placement row misses: " << placementRowMiss << endl;
 
 		cout << "[VALIDITY CHECK PASSED]" << endl;
 	}

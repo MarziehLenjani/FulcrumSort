@@ -5,17 +5,11 @@
 
 template <typename T>
 class Packet{
-
-	Packet(){}
-
 public:
 	//ID_TYPE dstId;	//destination subarray id within the stack
 	//PacketAddress dstAddr;
-	ID_TYPE dstSubAddr;
+	ID_TYPE dstBankAddr;
+	ID_TYPE dstSubId;
 	T payload;
-
-	Packet(ID_TYPE dstSubAddr, const T& _payload) : dstSubAddr(dstSubAddr), payload(_payload){
-
-	};
 };
 

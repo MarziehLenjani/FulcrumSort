@@ -29,10 +29,10 @@ public:
 		while(!inQ.empty() && (currPacketLim >= 1)){
 			auto pkt = inQ.front();
 			inQ.pop();
-			u64 dstBank = extractBankId(pkt->dstSubAddr);
-			u64 dstStack = extractStackId(pkt->dstSubAddr);
+			u64 dstBank = extractBankId(pkt->dstBankAddr);
+			u64 dstStack = extractStackId(pkt->dstBankAddr);
 
-			outDevice->stackVector[dstStack]->layerVector[0]->bankVector[dstBank]->subarrayVector[0]->incomingPackets.push(pkt);
+			outDevice->stackVector[dstStack]->layerVector[0]->bankVector[dstBank]->packetQ.push(pkt);
 			currPacketLim--;
 		}
 		if(!inQ.empty()){
