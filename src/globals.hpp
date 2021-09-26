@@ -44,10 +44,10 @@
 #define G_HMC_LINK_PAYLOAD_SIZE						8
 #define G_HMC_LINK_PACKET_PER_CLOCK					(G_HMC_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_HMC_LINK_PAYLOAD_SIZE)
 
-#define G_CXL_LINK_EFFICIENCY						0.8
-#define G_CXL_LINK_PAYLOAD_BANDWIDTH_GB				(32 * G_CXL_LINK_EFFICIENCY)
-#define G_CXL_LINK_PAYLOAD_SIZE						8
-#define G_CXL_LINK_PACKET_PER_CLOCK					(G_CXL_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_CXL_LINK_PAYLOAD_SIZE)
+#define G_NV_LINK_EFFICIENCY						0.8
+#define G_NV_LINK_PAYLOAD_BANDWIDTH_GB				(50 * G_NV_LINK_EFFICIENCY)
+#define G_NV_LINK_PAYLOAD_SIZE						8
+#define G_NV_LINK_PACKET_PER_CLOCK					(G_NV_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_NV_LINK_PAYLOAD_SIZE)
 
 extern u64 stateCounter[16];
 
@@ -95,23 +95,24 @@ extern KEY_TYPE rangeEnd;
 extern u64 numOfProcessedSubarrays;
 extern u64 numOfInFlightPackets;
 extern u64 lastIdx;
-extern u64 reservedBytesForReadWriteArray;
+//extern u64 reservedBytesForReadWriteArray;
 extern u64 hopCounter;
 
-extern LOCAL_ADDRESS_TYPE histStartAddr;
-extern LOCAL_ADDRESS_TYPE histEndAddr;
+//extern LOCAL_ADDRESS_TYPE histStartAddr;
+//extern LOCAL_ADDRESS_TYPE histEndAddr;
 extern KEY_TYPE* dataArray;
 
 extern u64 locShiftAmt;
 
-#include "PacketAllocator.hpp"
-extern PacketAllocator<PlacementPacket>* placementPacketAllocator;
+//#include "PacketAllocator.hpp"
+//extern PacketAllocator<PlacementPacket>* placementPacketAllocator;
+#include "Packet.hpp"
+extern Packet<PlacementPacket>* packetPool;
 
 extern u64 placementRowHit;
 extern u64 placementRowMiss;
 
-extern u64 maxQueueLoad;
-extern u64 producedPackets;
+extern u64 elemPerSubarray;
 
 extern bool dragonEdges[64][64];
 extern u8 dragonNextDst[64][64];
@@ -141,40 +142,32 @@ static bool radixComp(KEY_TYPE a, KEY_TYPE b){
 	return a < b;
 }
 
-constexpr ID_TYPE extractSubId(ID_TYPE dstSubAddr){
-	return dstSubAddr % G_NUM_SUBARRAY_PER_BANK;
+constexpr ID_TYPE extractUptoLayer(ID_TYPE dstBankAddr){
+	return dstBankAddr / G_NUM_BANKS_PER_LAYER;
 }
 
-constexpr ID_TYPE extractUptoBank(ID_TYPE dstSubAddr){
-	return dstSubAddr / G_NUM_SUBARRAY_PER_BANK;
+constexpr ID_TYPE extractUptoStack(ID_TYPE dstBankAddr){
+	return dstBankAddr / (G_NUM_BANKS_PER_LAYER * G_NUM_LAYERS_PER_STACK);
 }
 
-constexpr ID_TYPE extractUptoLayer(ID_TYPE dstSubAddr){
-	return dstSubAddr / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER);
+constexpr ID_TYPE extractUptoDevice(ID_TYPE dstBankAddr){
+	return (dstBankAddr / (G_NUM_BANKS_PER_LAYER * G_NUM_LAYERS_PER_STACK * G_NUM_STACKS_PER_DEVICE));
 }
 
-constexpr ID_TYPE extractUptoStack(ID_TYPE dstSubAddr){
-	return dstSubAddr / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER * G_NUM_LAYERS_PER_STACK);
+constexpr ID_TYPE extractBankId(ID_TYPE dstBankAddr){
+	return dstBankAddr % G_NUM_BANKS_PER_LAYER;
 }
 
-constexpr ID_TYPE extractUptoDevice(ID_TYPE dstSubAddr){
-	return (dstSubAddr / (G_NUM_SUBARRAY_PER_BANK * G_NUM_BANKS_PER_LAYER * G_NUM_LAYERS_PER_STACK * G_NUM_STACKS_PER_DEVICE));
+constexpr ID_TYPE extractLayerId(ID_TYPE dstBankAddr){
+	return extractUptoLayer(dstBankAddr) % G_NUM_LAYERS_PER_STACK;
 }
 
-constexpr ID_TYPE extractBankId(ID_TYPE dstSubAddr){
-	return extractUptoBank(dstSubAddr) % G_NUM_BANKS_PER_LAYER;
+constexpr ID_TYPE extractStackId(ID_TYPE dstBankAddr){
+	return extractUptoStack(dstBankAddr) % G_NUM_STACKS_PER_DEVICE;
 }
 
-constexpr ID_TYPE extractLayerId(ID_TYPE dstSubAddr){
-	return extractUptoLayer(dstSubAddr) % G_NUM_LAYERS_PER_STACK;
-}
-
-constexpr ID_TYPE extractStackId(ID_TYPE dstSubAddr){
-	return extractUptoStack(dstSubAddr) % G_NUM_STACKS_PER_DEVICE;
-}
-
-constexpr ID_TYPE extractDeviceId(ID_TYPE dstSubAddr){
-	return  extractUptoDevice(dstSubAddr);
+constexpr ID_TYPE extractDeviceId(ID_TYPE dstBankAddr){
+	return  extractUptoDevice(dstBankAddr);
 }
 
 

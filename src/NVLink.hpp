@@ -9,15 +9,15 @@
 #include "Device.hpp"
 #include "Stack.hpp"
 
-class CXLLink {
+class NVLink {
 	double currPacketLim = 0;
 
 	std::queue <Packet<PlacementPacket>* > inQ;
 	Device* outDevice = nullptr;
 
 public:
-	CXLLink(Device* outDevice) : outDevice(outDevice) {
-		assert(G_CXL_LINK_PACKET_PER_CLOCK >= 1);	//Assumes send one or more packet per clock cycle
+	NVLink(Device* outDevice) : outDevice(outDevice) {
+		assert(G_NV_LINK_PACKET_PER_CLOCK >= 1);	//Assumes send one or more packet per clock cycle
 		//TODO: fix if multiple clock cycles are needed to send a packet
 	}
 
@@ -29,14 +29,14 @@ public:
 		while(!inQ.empty() && (currPacketLim >= 1)){
 			auto pkt = inQ.front();
 			inQ.pop();
-			u64 dstBank = extractBankId(pkt->dstSubAddr);
-			u64 dstStack = extractStackId(pkt->dstSubAddr);
+			u64 dstBank = extractBankId(pkt->dstBankAddr);
+			u64 dstStack = extractStackId(pkt->dstBankAddr);
 
-			outDevice->stackVector[dstStack]->layerVector[0]->bankVector[dstBank]->subarrayVector[0]->incomingPackets.push(pkt);
+			outDevice->stackVector[dstStack]->layerVector[0]->bankVector[dstBank]->packetQ.push(pkt);
 			currPacketLim--;
 		}
 		if(!inQ.empty()){
-			currPacketLim += G_CXL_LINK_PACKET_PER_CLOCK;
+			currPacketLim += G_NV_LINK_PACKET_PER_CLOCK;
 		}
 		else{
 			currPacketLim = 0;

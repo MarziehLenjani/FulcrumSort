@@ -1,9 +1,9 @@
 
+#include "NVLink.hpp"
 #include "LogicLayer.hpp"
 #include "HMCLink.hpp"
 #include "Stack.hpp"
 #include "Device.hpp"
-#include "CXLLink.hpp"
 
 LogicLayer::LogicLayer(PhysicalComponent * parent) : PhysicalComponent(parent->id, parent) {
 	for(u64 i = 0; i < G_NUM_STACKS_PER_DEVICE; i++){
@@ -34,17 +34,17 @@ void LogicLayer::runOneCycle(){
 
 			//TODO: Send packet via correct link
 
-			u64 dstDeviceId = extractDeviceId(pkt->dstSubAddr);
+			u64 dstDeviceId = extractDeviceId(pkt->dstBankAddr);
 			u64 currDeviceId = parent->parent->id;	//logicLayer -> stack -> device
 			if(dstDeviceId != currDeviceId){
 				//send via cxl link
 				Stack* stack = (Stack*)parent;
 				Device* device = (Device*) stack->parent;
-				device->cxlLinks[dstDeviceId]->send(pkt);
+				device->nvLinks[dstDeviceId]->send(pkt);
 			}
 			else{
-				u64 dstStackId = extractStackId(pkt->dstSubAddr);
-				assert(dstStackId != id);
+				u64 dstStackId = extractStackId(pkt->dstBankAddr);
+				//assert(dstStackId != id);
 				hmcLinks[dstStackId]->send(pkt);
 			}
 		}

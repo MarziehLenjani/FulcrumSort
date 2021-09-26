@@ -90,39 +90,6 @@ dataPartitioning::dataPartitioning(PulleySystem * devices) : devices(devices){}
 //}
 
 
-// when we partition data we have three steps: 1. deivinding data , wrinting the start and the the end address into the local subarrays in needed
-ERROR_RETURN_TYPE  dataPartitioning::partitionEquallyAmongAllComputeSubArray (LOCAL_ADDRESS_TYPE DataAddress, bool writeMetadat, LOCAL_ADDRESS_TYPE AddressOfTheStartAddress, LOCAL_ADDRESS_TYPE AddressOfTheEndAdddress, READ_DATA_TYPE_IN_MEMORY_ARRAY * dataToBePartitionedData, LOCAL_ADDRESS_TYPE numOfDataElements ){
-
-	ERROR_RETURN_TYPE ret;
-	LOCAL_ADDRESS_TYPE i=0;
-	LOCAL_ADDRESS_TYPE eachPartition = numOfDataElements / G_NUM_TOTAL_SUBARRAY;
-	LOCAL_ADDRESS_TYPE remainingElems =  numOfDataElements - eachPartition * G_NUM_TOTAL_SUBARRAY;
-	assert(remainingElems < G_NUM_TOTAL_SUBARRAY);
-
-	u64 totElemDistributed = 0;	//just for checking if all data elements are distributed
-	for(Subarray* ptr : devices->subarrayVector){
-		LOCAL_ADDRESS_TYPE numDataElementsInSubarray = eachPartition;
-		if(remainingElems){
-			numDataElementsInSubarray++;
-			remainingElems--;
-		}
-
-		ptr->memoryArrayObj->write(DataAddress, numDataElementsInSubarray * sizeof(KEY_TYPE), dataToBePartitionedData + totElemDistributed * sizeof(KEY_TYPE));
-		totElemDistributed += numDataElementsInSubarray;
-		if(writeMetadat){
-			//LOCAL_ADDRESS_TYPE startAaddress=localAddressToLocalMetadata(DataAddress);
-			//ptr->memoryArrayObj->write(AddressOfTheStartAddress, sizeof(LOCAL_ADDRESS_TYPE), (READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& startAaddress));
-			//LOCAL_ADDRESS_TYPE endAaddress=localAddressToLocalMetadata(DataAddress + numDataElementsInSubarray * sizeof(KEY_TYPE));
-			//ptr->memoryArrayObj->write(AddressOfTheEndAdddress, sizeof(LOCAL_ADDRESS_TYPE),(READ_DATA_TYPE_IN_MEMORY_ARRAY*) (& endAaddress ));
-			//ptr->memoryArrayObj->write32(AddressOfTheStartAddress, DataAddress);
-			ptr->memoryArrayObj->write32(AddressOfTheEndAdddress, DataAddress + numDataElementsInSubarray * sizeof(KEY_TYPE));
-		}
-		i++;
-	}
-	assert(totElemDistributed == numOfDataElements);
-	return ret;
-}
-
 //TODO: change this function if other sort of metadata is required
 LOCAL_ADDRESS_TYPE dataPartitioning::localAddressToLocalMetadata(LOCAL_ADDRESS_TYPE localAddress){
 	return (localAddress/4);

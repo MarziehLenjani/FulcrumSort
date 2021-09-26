@@ -7,12 +7,14 @@
 #include "Device.hpp"
 #include "PhysicalComponent.hpp"
 #include "Subarray.hpp"
+#include "Bank.hpp"
 #include "LogicLayer.hpp"
 
 class PulleySystem : public PhysicalComponent {
 public:
 	std::vector<Device*> deviceVector;
 	std::vector<Subarray*> subarrayVector;
+	std::vector<Bank*> bankVector;
 	std::vector<LogicLayer*> logicLayerVector;
 
 	PulleySystem(ID_TYPE l_id, PhysicalComponent* l_parent) : PhysicalComponent(l_id, l_parent) {
@@ -26,7 +28,8 @@ public:
 
 		//assign global id's to subarrays
 		//and also init layer Q pointers
-		u64 sid = 0;
+		u64 subSelfIdx = 0;
+		u64 bankSelfIdx = 0;
 		for(u64 i = 0; i < G_NUM_DEVICES; i++){
 			Device* device = deviceVector[i];
 			device->initLinks();
@@ -39,10 +42,12 @@ public:
 					for(u64 l = 0; l < G_NUM_BANKS_PER_LAYER; l++){
 						Bank* bank = layer->bankVector[l];
 						bank->initLayerQ();
+						bankVector.push_back(bank);
+						bank->selfIndex = bankSelfIdx++;
 						for(u64 m = 0; m < G_NUM_SUBARRAY_PER_BANK; m++){
 							Subarray* sub = bank->subarrayVector[m];
 							subarrayVector.push_back(sub);
-							sub->SelfIndex = sid++;
+							sub->selfIndex = subSelfIdx++;
 						}
 					}
 				}
