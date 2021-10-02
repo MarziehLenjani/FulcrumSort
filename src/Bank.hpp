@@ -22,6 +22,10 @@ private:
 
 public:
 	ID_TYPE selfIndex = 0;
+	u64 numSubToSubPackets = 0;
+	u64 numBankToBankPackets = 0;
+	u64 numSegTSVPackets = 0;
+	u64 numRowActivations = 0;
 
 	std::vector<Subarray *> subarrayVector;
 

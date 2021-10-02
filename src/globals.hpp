@@ -6,8 +6,8 @@
 #include <iostream>
 
 // Configuration
-#define G_NUM_DEVICES				4
-#define G_NUM_STACKS_PER_DEVICE		4
+#define G_NUM_DEVICES				1
+#define G_NUM_STACKS_PER_DEVICE		1
 #define G_NUM_LAYERS_PER_STACK		8
 #define G_NUM_BANKS_PER_LAYER		64
 #define G_NUM_SUBARRAY_PER_BANK		16
@@ -28,6 +28,10 @@
 #define G_KEY_BITS					(sizeof(KEY_TYPE) * 8)
 #define G_NUM_HIST_ELEMS			(1UL << 16)
 
+//use bank level histogram if the number of histogram elements is too high
+#if (G_NUM_HIST_ELEMS > 8192)
+#define G_BANK_LEVEL_HISTOGRAM
+#endif
 
 // Timings for modeling
 #define G_LOCAL_SORT_INIT_CYCLES					8
@@ -116,6 +120,13 @@ extern u64 elemPerSubarray;
 
 extern bool dragonEdges[64][64];
 extern u8 dragonNextDst[64][64];
+
+
+//extern u64 numRowActivations;
+//extern u64 numSubToSubPackets;
+//extern u64 numBankToBankPackets;
+//extern u64 numSegTSVPackets;
+
 
 static u64 getNextPow2(u64 val, u64 minVal) {
 	if(val <= minVal){

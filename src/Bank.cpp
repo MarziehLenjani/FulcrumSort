@@ -25,6 +25,7 @@ Bank::~Bank(){
 	}
 }
 
+//A bit of approximation here to make the simulation much faster!
 void Bank::prePlacementProducePackets(){
 	for(i64 i = G_NUM_SUBARRAY_PER_BANK - 1; i >= 0; i--){
 		subarrayVector[i]->prePlacementProducePackets(packetQ, histogram);
@@ -82,12 +83,14 @@ std::queue <Packet<PlacementPacket>*>* Bank::getNextBankQ_dragonfly(ID_TYPE dstB
 		ID_TYPE dstBankId = extractBankId(dstBankAddr);
 		if(id != dstBankId){
 			//incorrect bank, go towards correct bank using dragonfly topology
+			numBankToBankPackets++;
 			u64 nextBank = dragonNextDst[id][dstBankId];
 			Layer* layer = (Layer*)parent;
 			return &(layer->bankVector[nextBank]->packetQ);
 		}
 		else{
 			//correct bank, go towards correct layer
+			numSegTSVPackets++;
 			u64 currLayer = extractLayerId(selfIndex);
 			u64 destLayer = extractLayerId(dstBankAddr);
 
@@ -103,6 +106,7 @@ std::queue <Packet<PlacementPacket>*>* Bank::getNextBankQ_dragonfly(ID_TYPE dstB
 	}
 	else{
 		//incorrect stack, go towards logic layer
+		numSegTSVPackets++;
 		return lowerLayerQ;
 	}
 

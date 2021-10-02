@@ -28,13 +28,23 @@ int main(int argc, char **argv)
 
 	elemPerSubarray = atol(argv[1]);
 	u64 G_NUM_OF_DATA_ELEMENTS = elemPerSubarray * G_NUM_TOTAL_SUBARRAY;
+	if(G_NUM_OF_DATA_ELEMENTS > 0xFFFFFFFFULL){
+		assert(sizeof(HIST_ELEM_TYPE) == 8);
+	}
 
 	u64 totalSimCyclesLocalSort = 0;
 	u64 totalSimCyclesHistGen = 0;
 	u64 totalSimCyclesPrePlacement = 0;
 	u64 totalSimCyclesPlacement = 0;
 	u64 currStepCycles = 0;
-    long long int c=0;
+
+	u64 totNumSubToSubPackets = 0;
+	u64 totNumBankToBankPackets = 0;
+	u64 totNumSegTSVPackets = 0;
+	u64 totNumRowActivations = 0;
+	u64 totNumBitwiseOp = 0;
+	u64 totNumShiftToSide = 0;
+	u64 totNumAdditions = 0;
 
     assert((G_NUM_BANKS_PER_LAYER % 2) == 0);
 
@@ -129,6 +139,12 @@ int main(int argc, char **argv)
 		}
 
 		u64 totWaitCyclesInQ = 0;
+		u64 rowPerSubForKeys = ceil(1.0 * elemPerSubarray * sizeof(KEY_TYPE) / G_NUM_BYTES_IN_ROW);
+		u64 rowPerSubForPlcPkt = ceil(1.0 * elemPerSubarray * sizeof(PlacementPacket) / G_NUM_BYTES_IN_ROW);
+
+#ifdef G_BANK_LEVEL_HISTOGRAM
+		u64 rowPerBankForHist = ceil(1.0 * G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE) / G_NUM_BYTES_IN_ROW);
+#endif
 
 		for(radixStartBit = 0; radixStartBit < G_KEY_BITS; radixStartBit += G_RADIX_BITS){
 			radixEndBit = min(G_KEY_BITS, radixStartBit + G_RADIX_BITS);
@@ -153,6 +169,16 @@ int main(int argc, char **argv)
 			currStepCycles = G_LOCAL_SORT_INIT_CYCLES + elemPerSubarray * (radixEndBit - radixStartBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
 			simCycles += currStepCycles;
 			totalSimCyclesLocalSort += currStepCycles;
+
+			//row activations for local sorting (2 for reading from src and writing to dst)
+			totNumRowActivations += rowPerSubForKeys * 2 * (radixEndBit - radixStartBit) * G_NUM_TOTAL_SUBARRAY;
+
+			//have to move all the data elements once to the side of the subarray, then write back
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2;
+
+			//bitwise op for local sorting (2 for SHIFT and AND operations (extracting radix))
+			totNumBitwiseOp += G_NUM_OF_DATA_ELEMENTS * 2 * (radixEndBit - radixStartBit);
+
 			printSimCycle("\tFinished local sort");
 
 			// Initialization that are needed only once per radix bits
@@ -289,6 +315,7 @@ int main(int argc, char **argv)
 				simCycles++;
 				totalSimCyclesPlacement++;
 			}
+
 			printSimCycle("\t\tFinished Placement");
 
 
@@ -302,6 +329,48 @@ int main(int argc, char **argv)
 //			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 //				sub->printReadElements();
 //			}
+			//numSubToSubPackets += elemPerSubarray * G_NUM_SUBARRAY_PER_BANK * (G_NUM_SUBARRAY_PER_BANK - 1);
+
+
+			//Energy calculation
+#ifdef G_BANK_LEVEL_HISTOGRAM
+			assert(G_KEY_BITS == 32); //for now, this part only works for 32-bit keys
+
+			//local hist
+			totNumRowActivations += rowPerSubForKeys * G_NUM_TOTAL_SUBARRAY + rowPerBankForHist * G_NUM_TOTAL_BANKS;
+			totNumSubToSubPackets += (elemPerSubarray * G_NUM_SUBARRAY_PER_BANK * (G_NUM_SUBARRAY_PER_BANK - 1) / 2) * G_NUM_TOTAL_BANKS;
+			totNumBitwiseOp += G_NUM_OF_DATA_ELEMENTS * 2; //for extracting radix (SHIFT + AND)
+			totNumAdditions += G_NUM_OF_DATA_ELEMENTS; //One comparison per element
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2; //One for keys being sent to the side, one for reduction at the bank
+
+
+			//prefix sum
+			totNumRowActivations += rowPerBankForHist * G_NUM_TOTAL_BANKS * 2; //one for read, one for write
+			totNumBankToBankPackets += (G_NUM_HIST_ELEMS - 1) * G_NUM_TOTAL_BANKS;
+			totNumSegTSVPackets += (G_NUM_HIST_ELEMS - 1) * G_NUM_LAYERS_PER_STACK * G_NUM_BANKS_PER_LAYER / 2;
+			totNumAdditions += (G_NUM_HIST_ELEMS - 1) * G_NUM_TOTAL_BANKS;
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2;
+
+
+			//pre-placement (fixed portions are added here, rest added during simulation)
+			totNumRowActivations += rowPerSubForKeys * G_NUM_TOTAL_SUBARRAY + rowPerBankForHist * G_NUM_TOTAL_BANKS;	//for packet generation
+			totNumRowActivations += rowPerSubForPlcPkt * G_NUM_TOTAL_SUBARRAY;	//for append
+			//bitwise ops: extract radix (SHIFT + AND), determine location (SHIFT for subarray id + AND for offset)
+			totNumBitwiseOp += 4 * G_NUM_OF_DATA_ELEMENTS;
+			totNumAdditions += G_NUM_OF_DATA_ELEMENTS;	//one subtraction per element
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS + G_NUM_HIST_ELEMS * G_NUM_TOTAL_BANKS; //move key and histogram to APLU
+			totNumShiftToSide += sizeof(PlacementPacket) / 4 * G_NUM_OF_DATA_ELEMENTS;	//append placement packets
+
+
+			//Placement
+			//Writes are calculated within runPlacementOneCycle and added later
+			totNumRowActivations += rowPerSubForPlcPkt * G_NUM_TOTAL_SUBARRAY;
+			totNumShiftToSide += (sizeof(PlacementPacket) / 4 + sizeof(KEY_TYPE) / 4) * G_NUM_OF_DATA_ELEMENTS;
+
+#else
+#error TODO: energy calc for subarray level histogram
+#endif
+
 
 			printSimCycle("\tdone");
 			cout << endl;
@@ -320,6 +389,30 @@ int main(int argc, char **argv)
 		cout << "    Histogram gen cycles: " << totalSimCyclesHistGen << " (" << totalSimCyclesHistGen * 100.0 / totalCycles << " %)" << endl;
 		cout << "    Pre-palcement cycles: " << totalSimCyclesPrePlacement << " (" << totalSimCyclesPrePlacement * 100.0 / totalCycles << " %)" << endl;
 		cout << "        Placement cycles: " << totalSimCyclesPlacement << " (" << totalSimCyclesPlacement * 100.0 / totalCycles << " %)" << endl;
+
+
+		for(Bank* bank : pulley.bankVector){
+			totNumSubToSubPackets += bank->numSubToSubPackets * sizeof(PlacementPacket) / 4;
+			totNumBankToBankPackets += bank->numBankToBankPackets  * sizeof(PlacementPacket) / 4;
+			totNumSegTSVPackets += bank->numSegTSVPackets  * sizeof(PlacementPacket) / 4;
+			totNumRowActivations += bank->numRowActivations;
+		}
+		cout << endl << "Energy measurements: " << endl;
+//		cout << "          row activations: " << totNumRowActivations << endl;
+//		cout << "       Sub-to-sub packets: " << totNumSubToSubPackets << endl;
+//		cout << "     Bank-to-bank-packets: " << totNumBankToBankPackets << endl;
+//		cout << "    Segmented TSV packets: " << totNumSegTSVPackets << endl;
+//		cout << "              Bitwise ops: " << totNumBitwiseOp << endl;
+//		cout << "                Additions: " << totNumAdditions << endl;
+//		cout << "         Shifting to side: " << totNumShiftToSide << endl;
+		cout << totNumRowActivations << " ";
+		cout <<	totNumSubToSubPackets << " ";
+		cout <<	totNumBankToBankPackets << " ";
+		cout <<	totNumSegTSVPackets << " ";
+		cout <<	totNumBitwiseOp << " ";
+		cout <<	totNumAdditions << " ";
+		cout <<	totNumShiftToSide << endl;
+
 
 		//delete placementPacketAllocator;
 		free(packetPool);

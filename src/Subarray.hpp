@@ -8,6 +8,7 @@
 #ifndef COMPUTSUBARRAY_HPP_
 #define COMPUTSUBARRAY_HPP_
 
+#include <cstdlib>
 #include <queue>
 #include <vector>
 #include <algorithm>
@@ -26,7 +27,7 @@
 //class Device;
 //class Stack;
 //class Layer;
-//class Bank;
+class Bank;
 
 //class MemoryObject;
 
@@ -77,7 +78,7 @@ public:
 	//Device* device;
 	//Stack * stack;
 	//Layer * layer;
-	//Bank* bank;
+	Bank* bank;
 
 
 	//Walker* walkers[NUM_WALKERS];
@@ -161,26 +162,7 @@ public:
 	} placementSchState = PSTATE_INVALID;
 
 
-	void prePlacementProducePackets(std::queue <Packet<PlacementPacket>* > &packetQ, HIST_ELEM_TYPE* histogram){
-		u64 pktIdxBase = selfIndex * elemPerSubarray;
-		for(i64 currReadIdx = readEndIdx - 1; currReadIdx >= readStartIdx; currReadIdx--){
-			KEY_TYPE key = keys[currReadIdx];
-			FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
-			HIST_ELEM_TYPE location = --histogram[radix % G_NUM_HIST_ELEMS];
-
-			//push into queue
-			u64 dstSubAddr = location >> locShiftAmt;
-			LOCAL_ADDRESS_TYPE dstOff = location & ((1UL << locShiftAmt) - 1);
-
-			Packet<PlacementPacket>* tmpPacket = packetPool + pktIdxBase + currReadIdx;
-			tmpPacket->dstBankAddr = dstSubAddr / G_NUM_SUBARRAY_PER_BANK;
-			tmpPacket->dstSubId = dstSubAddr % G_NUM_SUBARRAY_PER_BANK;
-			tmpPacket->payload.key = key;
-			tmpPacket->payload.offset = dstOff * sizeof(KEY_TYPE);
-
-			packetQ.push(tmpPacket);
-		}
-	}
+	void prePlacementProducePackets(std::queue <Packet<PlacementPacket>* > &packetQ, HIST_ELEM_TYPE* histogram);
 
 	void appendPacket(PlacementPacket& payload){
 		placementPackets[appendIdx++] = payload;
@@ -299,64 +281,7 @@ public:
 		placementSchState = PSTATE_PLACEMENT;
 	}
 
-	void runPlacementOneCycle(){
-		if(!finishedPlacementRead){
-
-			//stateCounter[placementSchState]++;
-
-			switch(placementSchState){
-
-			case PSTATE_PLACEMENT:
-			{
-				const PlacementPacket& pkt = placementPackets[appendIdx];
-				targetAddr = pkt.offset;
-
-				if(currOpenRow != extractRowIndexFromLocalAddress(targetAddr)){
-					//placementRowMiss++;
-					waitCounter = G_ROW_ACCESS_LATENCY;
-					placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
-				}
-				else{
-					//placementRowHit++;
-					//already latched
-					keys[targetAddr / sizeof(KEY_TYPE)] = pkt.key;
-
-//					if(targetAddr + sizeof(KEY_TYPE) > memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR)){
-//						memoryArrayObj->writeLocalAddr(G_ADDR_OF_READ_END_ADDR, targetAddr + sizeof(KEY_TYPE));
-//					}
-
-					//go to next element
-					appendIdx++;
-
-					if(appendIdx == elemPerSubarray){
-						//Finished going through all elements in range
-						finishedPlacementRead = true;
-
-						#pragma omp atomic
-						numOfProcessedSubarrays++;
-					}
-				}
-
-			}
-				break;
-
-
-			case PSTATE_STALLED_ON_PLACEMENT:
-				if(!--waitCounter){
-					currOpenRow = extractRowIndexFromLocalAddress(targetAddr);	//timer expired. Target row is now open.
-					//walkers[2]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-					//walkers[2]->latchedRowIndex = currOpenRow;
-					placementSchState = PSTATE_PLACEMENT;
-				}
-				break;
-
-
-			default:
-				std::cerr << "Invalid placement state!!" << std::endl;
-				exit(-1);
-			}
-		}
-	}
+	void runPlacementOneCycle();
 
 
 //	void swapReadWriteArray(){
