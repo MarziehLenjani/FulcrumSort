@@ -12,7 +12,7 @@
 #define G_NUM_BANKS_PER_LAYER		64
 #define G_NUM_SUBARRAY_PER_BANK		16
 #define G_SIZE_OF_SUBARRAY_IN_BYTE	(1024*1024UL)
-
+#define G_NUM_BYTES_IN_ROW			256
 
 #define G_NUM_TOTAL_STACKS			(G_NUM_DEVICES * G_NUM_STACKS_PER_DEVICE)
 #define G_NUM_TOTAL_LAYERS			(G_NUM_TOTAL_STACKS * G_NUM_LAYERS_PER_STACK)
@@ -21,37 +21,36 @@
 
 //#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 1024)
 
-#define G_NUM_WORDS_IN_ROW			64
-#define G_NUM_BYTES_IN_ROW			(G_NUM_WORDS_IN_ROW * sizeof(FULCRU_WORD_TYPE))
 
 #define G_RADIX_BITS				16
 #define G_KEY_BITS					(sizeof(KEY_TYPE) * 8)
-#define G_NUM_HIST_ELEMS			(1UL << 16)
+#define G_NUM_HIST_ELEMS			(1UL << G_RADIX_BITS)
 
-//use bank level histogram if the number of histogram elements is too high
-#if (G_NUM_HIST_ELEMS > 8192)
+//use bank level histogram
+//#if (G_NUM_HIST_ELEMS > 8192)
 #define G_BANK_LEVEL_HISTOGRAM
-#endif
+//#endif
 
 // Timings for modeling
-#define G_LOCAL_SORT_INIT_CYCLES					8
+//#define G_LOCAL_SORT_INIT_CYCLES					8
 #define G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT		1
 #define G_LOCAL_HIST_RESET_CYCLES_PER_ELEM			1
-#define G_LOCAL_HIST_CYCLES_PER_ELEM				2
+#define G_LOCAL_HIST_CYCLES_PER_ELEM				3
 #define G_REDUCTION_PER_HIST_ELEM_CYCLES			1
 #define G_OFFSET_PER_HIST_ELEM_CYCLES				1
 
-#define G_SYSTEM_CLOCK_PERIOD_NS					0.8
+#define G_INTCNT_CLOCK_PERIOD_NS					1.0
+#define G_LOGIC_CLOCK_PERIOD_NS						1.6
 
 #define G_HMC_LINK_EFFICIENCY						0.8
 #define G_HMC_LINK_PAYLOAD_BANDWIDTH_GB				(60.0 * 8 / 9 * G_HMC_LINK_EFFICIENCY)
 #define G_HMC_LINK_PAYLOAD_SIZE						8
-#define G_HMC_LINK_PACKET_PER_CLOCK					(G_HMC_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_HMC_LINK_PAYLOAD_SIZE)
+#define G_HMC_LINK_PACKET_PER_CLOCK					(G_HMC_LINK_PAYLOAD_BANDWIDTH_GB * G_INTCNT_CLOCK_PERIOD_NS / G_HMC_LINK_PAYLOAD_SIZE)
 
 #define G_NV_LINK_EFFICIENCY						0.8
 #define G_NV_LINK_PAYLOAD_BANDWIDTH_GB				(50 * G_NV_LINK_EFFICIENCY)
 #define G_NV_LINK_PAYLOAD_SIZE						8
-#define G_NV_LINK_PACKET_PER_CLOCK					(G_NV_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_NV_LINK_PAYLOAD_SIZE)
+#define G_NV_LINK_PACKET_PER_CLOCK					(G_NV_LINK_PAYLOAD_BANDWIDTH_GB * G_INTCNT_CLOCK_PERIOD_NS / G_NV_LINK_PAYLOAD_SIZE)
 
 extern u64 stateCounter[16];
 
@@ -88,7 +87,7 @@ extern u64 stateCounter[16];
 
 // Global objects
 //extern EventQueue eventQueue
-extern u64 simCycles;
+extern double simTimeNs;
 extern u64 radixSortMask;
 extern u64 radixSortShift;
 
@@ -115,12 +114,14 @@ extern Packet<PlacementPacket>* packetPool;
 
 extern u64 placementRowHit;
 extern u64 placementRowMiss;
+extern u64 maxPlacementQSize;
 
 extern u64 elemPerSubarray;
 
 extern bool dragonEdges[64][64];
 extern u8 dragonNextDst[64][64];
-
+#include "PlacementEventQueue.hpp"
+extern PlacementEventQueue placementEventQ;
 
 //extern u64 numRowActivations;
 //extern u64 numSubToSubPackets;
@@ -143,8 +144,8 @@ static u64 getNextPow2(u64 val){
 	return getNextPow2(val, 2);
 }
 
-static void printSimCycle(const std::string& msg = ""){
-	std::cout << "[CYCLE " << simCycles << "] " << msg << std::endl;
+static void printSimTime(const std::string& msg = ""){
+	std::cout << "[TIME " << simTimeNs << " ns] " << msg << std::endl;
 }
 
 static bool radixComp(KEY_TYPE a, KEY_TYPE b){

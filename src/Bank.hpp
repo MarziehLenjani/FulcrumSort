@@ -27,6 +27,8 @@ public:
 	u64 numSegTSVPackets = 0;
 	u64 numRowActivations = 0;
 
+	u64 stalledSub = 0;
+
 	std::vector<Subarray *> subarrayVector;
 
 	//Histogram is stored in bank instead of subarray to reduce simulation time.
@@ -40,11 +42,12 @@ public:
 	Bank(ID_TYPE l_id, PhysicalComponent * l_parent);
 	~Bank();
 
-	void prePlacementProducePackets();
-	void prePlacementConsumePacketsOneCycle();
+	void producePackets();
+	void routePacketsOneCycle();
+
 
 	void initLayerQ();
-	void runLocalHist();
+	u64 runLocalHist();
 };
 
 

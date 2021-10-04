@@ -19,6 +19,7 @@
 #include <queue>
 #include "Packet.hpp"
 #include "PhysicalComponent.hpp"
+#include "Buffer.hpp"
 
 //#define NUM_WALKERS		3
 
@@ -45,18 +46,20 @@ public:
 
 	FULCRU_WORD_TYPE selfIndex = 0;
 	KEY_TYPE* keys = nullptr;
-	PlacementPacket* placementPackets = nullptr;
 
 	i64 readStartIdx = 0;
 	i64 readEndIdx = 0;
 
-	i64 appendIdx = 0;
+	//PlacementPacket* placementPackets = nullptr;
+	//i64 appendIdx = 0;
 
 	u64 currOpenRow = -1;
-	bool finishedPlacementRead = false;
+	//bool finishedPlacementRead = false;
 	u64 waitCounter = 0;
 
 	LOCAL_ADDRESS_TYPE targetAddr = 0;
+
+	Buffer<PlacementPacket, G_NUM_BYTES_IN_ROW / sizeof(PlacementPacket)> placementBuffer;
 
 //	LOCAL_ADDRESS_TYPE baseWriteAddr = 0;
 //	LOCAL_ADDRESS_TYPE currWriteAddr = 0;
@@ -130,14 +133,15 @@ public:
 
 	void initPerRadix(){
 		readStartIdx = 0;
-		appendIdx = 0;
+		//appendIdx = 0;
 
 
 		//writeStartAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_WRITE_START_ADDR);
 		//writeEndAddr = writeStartAddr;
 	}
 
-	void runLocalHist(HIST_ELEM_TYPE* histogram){
+	u64 runLocalHist(HIST_ELEM_TYPE* histogram){
+		u64 processedElemCount = 0;
 		readEndIdx = readStartIdx;
 		while(readEndIdx < elemPerSubarray){
 			KEY_TYPE key = keys[readEndIdx];
@@ -147,7 +151,9 @@ public:
 			}
 			histogram[radix % G_NUM_HIST_ELEMS]++;
 			readEndIdx++;
+			processedElemCount++;
 		}
+		return processedElemCount;
 	}
 
 	enum PlacementSchState {
@@ -164,9 +170,7 @@ public:
 
 	void prePlacementProducePackets(std::queue <Packet<PlacementPacket>* > &packetQ, HIST_ELEM_TYPE* histogram);
 
-	void appendPacket(PlacementPacket& payload){
-		placementPackets[appendIdx++] = payload;
-	}
+	void appendPacket(PlacementPacket& payload);
 
 
 //	void runPrePlacementConsumerOneCycle(){
@@ -259,29 +263,30 @@ public:
 //	}
 
 
-	void initPlacementPerRadix(){
-		finishedPlacementRead = false;
-
-		appendIdx = 0;
-
-		//currReadAddr = writeStartAddr;
-		//baseWriteAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
-
-		//assert(writeStartAddr <= writeEndAddr);
-
-//		if(currReadAddr >= writeEndAddr){
-//			//Finished going through all elements in range
-//			finishedPlacementRead = true;
-//			//#pragma omp atomic
-//			numOfProcessedSubarrays++;
-//		}
-//		else {
-//			placementSchState = PSTATE_PLACEMENT;
-//		}
-		placementSchState = PSTATE_PLACEMENT;
-	}
+//	void initPlacementPerRadix(){
+//		finishedPlacementRead = false;
+//
+//		appendIdx = 0;
+//
+//		//currReadAddr = writeStartAddr;
+//		//baseWriteAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
+//
+//		//assert(writeStartAddr <= writeEndAddr);
+//
+////		if(currReadAddr >= writeEndAddr){
+////			//Finished going through all elements in range
+////			finishedPlacementRead = true;
+////			//#pragma omp atomic
+////			numOfProcessedSubarrays++;
+////		}
+////		else {
+////			placementSchState = PSTATE_PLACEMENT;
+////		}
+//		placementSchState = PSTATE_PLACEMENT;
+//	}
 
 	void runPlacementOneCycle();
+	void checkPlacementBuffer();
 
 
 //	void swapReadWriteArray(){

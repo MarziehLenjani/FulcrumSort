@@ -36,7 +36,7 @@ Subarray::Subarray(ID_TYPE l_id, PhysicalComponent *l_parent) : PhysicalComponen
 //	}
 
 	keys = (KEY_TYPE*)malloc(sizeof(KEY_TYPE) * elemPerSubarray);
-	placementPackets = (PlacementPacket*)malloc(sizeof(PlacementPacket) * elemPerSubarray);
+	//placementPackets = (PlacementPacket*)malloc(sizeof(PlacementPacket) * elemPerSubarray);
 }
 
 Subarray::~Subarray() {
@@ -47,11 +47,12 @@ Subarray::~Subarray() {
 
 	free(keys);
 	keys = nullptr;
-	free(placementPackets);
-	placementPackets = nullptr;
+	//free(placementPackets);
+	//placementPackets = nullptr;
 }
 
 void Subarray::prePlacementProducePackets(std::queue <Packet<PlacementPacket>* > &packetQ, HIST_ELEM_TYPE* histogram){
+	placementSchState = PSTATE_PLACEMENT;
 	u64 pktIdxBase = selfIndex * elemPerSubarray;
 	for(i64 currReadIdx = readEndIdx - 1; currReadIdx >= readStartIdx; currReadIdx--){
 		KEY_TYPE key = keys[currReadIdx];
@@ -70,59 +71,83 @@ void Subarray::prePlacementProducePackets(std::queue <Packet<PlacementPacket>* >
 
 		packetQ.push(tmpPacket);
 
-		if(tmpPacket->dstBankAddr == bank->selfIndex){
-			//Destination is the current bank. Just have to change the subarray to the correct one.
-			bank->numSubToSubPackets += abs((int)(tmpPacket->dstSubId - id));
+		#pragma omp atomic
+		numOfInFlightPackets++;
+
+		//Packet have to traverse through all subarray upto 0.
+		//Then reaching the correct bank, it has to traverse to the destination subarray.
+		bank->numSubToSubPackets += (id + tmpPacket->dstSubId);
+	}
+}
+
+void Subarray::checkPlacementBuffer(){
+	//assert(!placementBuffer.isEmpty());
+
+	const PlacementPacket& pkt = placementBuffer.front();
+	u64 targetAddr = pkt.offset;
+	u64 targetRow = extractRowIndexFromLocalAddress(targetAddr);
+
+	if(currOpenRow != targetRow){
+		//placementRowMiss++;
+		bank->numRowActivations++;
+		currOpenRow = targetRow;
+		placementEventQ.schedule(this, G_ROW_ACCESS_LATENCY);
+
+		//waitCounter = G_ROW_ACCESS_LATENCY;
+		//placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
+	}
+	else{
+		//placementRowHit++;
+		if(placementBuffer.isFull()){
+			bank->stalledSub--;	//going to pop an element, so the buffer will no longer be full
 		}
-		else{
-			//Destination is NOT the current bank. Packet have to traverse through all subarray upto 0.
-			//Then reaching the correct bank, it has to traverse to the destination subarray.
-			bank->numSubToSubPackets += (id + tmpPacket->dstSubId);
+		placementBuffer.pop();
+		//already latched to another walker
+		keys[targetAddr / sizeof(KEY_TYPE)] = pkt.key;
+
+		if(!placementBuffer.isEmpty()){
+			//Done with this packet. Schedule check for next packet on the next cycle
+			placementEventQ.schedule(this, 1);
 		}
+
+		numOfInFlightPackets--;
 	}
 }
 
 void Subarray::runPlacementOneCycle(){
-	if(!finishedPlacementRead){
-
-		//stateCounter[placementSchState]++;
-
-		switch(placementSchState){
+	switch(placementSchState){
 
 		case PSTATE_PLACEMENT:
-		{
-			//sequential read of placement packets
-			const PlacementPacket& pkt = placementPackets[appendIdx];
-			targetAddr = pkt.offset;
+			if(!placementBuffer.isEmpty()){
+				//sequential read of placement packets
+				const PlacementPacket& pkt = placementBuffer.front();
+				targetAddr = pkt.offset;
 
-			if(currOpenRow != extractRowIndexFromLocalAddress(targetAddr)){
-				//placementRowMiss++;
-				bank->numRowActivations++;
-				waitCounter = G_ROW_ACCESS_LATENCY;
-				placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
-			}
-			else{
-				//placementRowHit++;
-				//already latched
-				keys[targetAddr / sizeof(KEY_TYPE)] = pkt.key;
+				if(currOpenRow != extractRowIndexFromLocalAddress(targetAddr)){
+					//placementRowMiss++;
+					bank->numRowActivations++;
+					waitCounter = G_ROW_ACCESS_LATENCY;
+					placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
+				}
+				else{
+					//placementRowHit++;
+					if(placementBuffer.isFull()){
+						bank->stalledSub--;	//going to pop an element, so the buffer will no longer be full
+					}
+					placementBuffer.pop();
+					//already latched to another walker
+					keys[targetAddr / sizeof(KEY_TYPE)] = pkt.key;
 
-//					if(targetAddr + sizeof(KEY_TYPE) > memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR)){
-//						memoryArrayObj->writeLocalAddr(G_ADDR_OF_READ_END_ADDR, targetAddr + sizeof(KEY_TYPE));
-//					}
+					numOfInFlightPackets--;
 
-				//go to next element
-				appendIdx++;
+		//					if(targetAddr + sizeof(KEY_TYPE) > memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR)){
+		//						memoryArrayObj->writeLocalAddr(G_ADDR_OF_READ_END_ADDR, targetAddr + sizeof(KEY_TYPE));
+		//					}
 
-				if(appendIdx == elemPerSubarray){
-					//Finished going through all elements in range
-					finishedPlacementRead = true;
-
-					#pragma omp atomic
-					numOfProcessedSubarrays++;
+					//go to next element
+					//appendIdx++;
 				}
 			}
-
-		}
 			break;
 
 
@@ -139,8 +164,23 @@ void Subarray::runPlacementOneCycle(){
 		default:
 			std::cerr << "Invalid placement state!!" << std::endl;
 			exit(-1);
-		}
 	}
+}
+
+void Subarray::appendPacket(PlacementPacket& payload){
+	if(placementBuffer.isEmpty()){
+		//is going to insert an element
+		//schedule check on next cycle
+		placementEventQ.schedule(this, 1);
+	}
+	placementBuffer.push(payload);
+	if(placementBuffer.isFull()){
+		bank->stalledSub++;
+	}
+	if(placementBuffer.size() > maxPlacementQSize){
+		maxPlacementQSize = placementBuffer.size();
+	}
+	//placementPackets[appendIdx++] = payload;
 }
 
 //void computSubarray::runOneSubClokCycle(){
