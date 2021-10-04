@@ -80,9 +80,14 @@ extern u64 stateCounter[16];
 //#define G_ADDR_OF_TEMP_READ_ADDR			24
 
 
-#define PLACEMENT_QUEUE_MAX_CAPACITY		8
-#define PLACEMENT_QUEUE_HIGH_WATER_MARK		7
-#define PLACEMENT_QUEUE_LOW_WATER_MARK		2
+//Energy parameters (in nJ)
+#define G_ENR_ROW_ACT						0.544612
+#define G_ENR_BIT_OP						0.0001467846411
+#define G_ENR_INTEGER_ADDITION				0.0004992329586
+#define G_ENR_SUB_TO_SUB_PKT				0.00046875
+#define G_ENR_BANK_TO_BANK_PKT				0.0075
+#define G_ENR_SEG_TSV_PKT					0.0106
+#define G_ENR_SHIFT_TO_SIDE					0.0075
 
 
 // Global objects

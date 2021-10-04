@@ -33,7 +33,8 @@ int main(int argc, char **argv)
 	}
 
 	double totalSimTimeLocalSort = 0;
-	double totalSimTimeHistGen = 0;
+	double totalSimTimeLocalHistGen = 0;
+	double totalSimTimeHistPrefixSum = 0;
 	//double totalSimTimePrePlacement = 0;
 	double totalSimTimePlacement = 0;
 	double currStepTime = 0;
@@ -207,24 +208,25 @@ int main(int argc, char **argv)
 //					simCycles++;
 //				}
 
-				u64 maxProcessedElems = 0;
+				u64 maxProcessedElems = 0;	//max processed elem by a subarray
 				for(Bank* bank : pulley.bankVector){
 					u64 procElems = bank->runLocalHist();
 					if(procElems > maxProcessedElems){
 						maxProcessedElems = procElems;
 					}
 				}
+				cout << "Max processed elem: " << maxProcessedElems << endl;
 				//currStepTime = (maxProcessedElems * G_LOCAL_HIST_CYCLES_PER_ELEM) + (G_LOCAL_HIST_RESET_CYCLES_PER_ELEM * G_NUM_HIST_ELEMS);
-				currStepTime = (maxProcessedElems * G_LOCAL_HIST_CYCLES_PER_ELEM) * G_LOGIC_CLOCK_PERIOD_NS;
+				currStepTime = (maxProcessedElems * G_LOCAL_HIST_CYCLES_PER_ELEM) * G_LOGIC_CLOCK_PERIOD_NS + (G_NUM_SUBARRAY_PER_BANK - 1) * G_INTCNT_CLOCK_PERIOD_NS;
 				simTimeNs += currStepTime;
-				totalSimTimeHistGen += currStepTime;
+				totalSimTimeLocalHistGen += currStepTime;
 				printSimTime("\t\tFinished building local histogram");
 				//for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 				//	sub->printHist();
 				//}
 
 
-				//----------------------------------- Histogram Reduction -------------------------------------
+				//----------------------------------- Histogram Prefix sum -------------------------------------
 //				for(u64 i = 1; i < G_NUM_TOTAL_SUBARRAY; i++){
 //					HIST_ELEM_TYPE* currSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i]->memoryArrayObj->data + histStartAddr);
 //					HIST_ELEM_TYPE* prevSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i-1]->memoryArrayObj->data + histStartAddr);
@@ -246,7 +248,7 @@ int main(int argc, char **argv)
 				currStepTime = 	G_NUM_HIST_ELEMS * G_LOGIC_CLOCK_PERIOD_NS
 								+ G_NUM_TOTAL_BANKS * (G_LOGIC_CLOCK_PERIOD_NS + G_INTCNT_CLOCK_PERIOD_NS);
 				simTimeNs += currStepTime;
-				totalSimTimeHistGen += currStepTime;
+				totalSimTimeHistPrefixSum += currStepTime;
 
 				//Calculate prefix sum of the last bank
 				HIST_ELEM_TYPE prefixSum[G_NUM_HIST_ELEMS];
@@ -350,11 +352,11 @@ int main(int argc, char **argv)
 			assert(G_KEY_BITS == 32); //for now, this part only works for 32-bit keys
 
 			//local hist
-			totNumRowActivations += rowPerSubForKeys * G_NUM_TOTAL_SUBARRAY + rowPerBankForHist * G_NUM_TOTAL_BANKS;
+			totNumRowActivations += rowPerSubForKeys * G_NUM_TOTAL_SUBARRAY + rowPerBankForHist * G_NUM_TOTAL_BANKS * 16;
 			totNumSubToSubPackets += (elemPerSubarray * G_NUM_SUBARRAY_PER_BANK * (G_NUM_SUBARRAY_PER_BANK - 1) / 2) * G_NUM_TOTAL_BANKS;
 			totNumBitwiseOp += G_NUM_OF_DATA_ELEMENTS * 2; //for extracting radix (SHIFT + AND)
-			totNumAdditions += G_NUM_OF_DATA_ELEMENTS; //One comparison per element
-			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2; //One for keys being sent to the side, one for reduction at the bank
+			totNumAdditions += G_NUM_OF_DATA_ELEMENTS + G_NUM_HIST_ELEMS * 15 * G_NUM_TOTAL_BANKS; //One comparison per element
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2 + G_NUM_HIST_ELEMS * 16 * G_NUM_TOTAL_BANKS; //One for keys being sent to the side, one for reduction at the bank
 
 
 			//prefix sum
@@ -376,7 +378,7 @@ int main(int argc, char **argv)
 
 
 #else
-#error TODO: energy calc for subarray level histogram
+#error
 #endif
 
 
@@ -394,10 +396,12 @@ int main(int argc, char **argv)
 		cout << endl;
 		cout << "            Total time (ns): " << (u64)simTimeNs << endl;
 		cout << "       Local Sort time (ns): " << (u64)totalSimTimeLocalSort << " (" << totalSimTimeLocalSort * 100.0 / simTimeNs << " %)" << endl;
-		cout << "    Histogram gen time (ns): " << (u64)totalSimTimeHistGen << " (" << totalSimTimeHistGen * 100.0 / simTimeNs << " %)" << endl;
+		//cout << "   Local Hist gen time (ns): " << (u64)totalSimTimeLocalHistGen << " (" << totalSimTimeLocalHistGen * 100.0 / simTimeNs << " %)" << endl;
+		//cout << "  Hist prefix-sum time (ns): " << (u64)totalSimTimeHistPrefixSum << " (" << totalSimTimeHistPrefixSum * 100.0 / simTimeNs << " %)" << endl;
 		//cout << "    Pre-palcement cycles: " << totalSimCyclesPrePlacement << " (" << totalSimCyclesPrePlacement * 100.0 / totalCycles << " %)" << endl;
+		u64 totHistGenTime = totalSimTimeLocalHistGen + totalSimTimeHistPrefixSum;
+		cout << "   Total Hist gen time (ns): " << totHistGenTime << " (" << totHistGenTime * 100.0 / simTimeNs << " %)" << endl;
 		cout << "        Placement time (ns): " << (u64)totalSimTimePlacement << " (" << totalSimTimePlacement * 100.0 / simTimeNs << " %)" << endl;
-
 
 		for(Bank* bank : pulley.bankVector){
 			totNumSubToSubPackets += bank->numSubToSubPackets * sizeof(PlacementPacket) / 4;
@@ -458,7 +462,18 @@ int main(int argc, char **argv)
 
 		//cout << endl << "Placement row accesses: " << placementRowMiss + placementRowHit << endl;
 //		cout << endl << "Placement row hits: " << placementRowHit - placementRowMiss << endl;
-		cout << "Maximum placement Q size: " << maxPlacementQSize << endl;
+		//cout << "Maximum placement Q size: " << maxPlacementQSize << endl;
+
+		cout << endl;
+		cout << "Throughput (GB/s): " << G_NUM_OF_DATA_ELEMENTS * sizeof(KEY_TYPE) * 1e9 / 1024 / 1024 / 1024 / simTimeNs << endl;
+		double totEnergy = 	totNumRowActivations * G_ENR_ROW_ACT
+							+ totNumSubToSubPackets * G_ENR_SUB_TO_SUB_PKT
+							+ totNumBankToBankPackets * G_ENR_BANK_TO_BANK_PKT
+							+ totNumSegTSVPackets * G_ENR_SEG_TSV_PKT
+							+ totNumBitwiseOp * G_ENR_BIT_OP
+							+ totNumAdditions * G_ENR_INTEGER_ADDITION
+							+ totNumShiftToSide * G_ENR_SHIFT_TO_SIDE;
+		cout << "Power (W): " << totEnergy / simTimeNs << endl;
 
 		cout << "[VALIDITY CHECK PASSED]" << endl;
 	}

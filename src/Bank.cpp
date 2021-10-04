@@ -118,15 +118,15 @@ std::queue <Packet<PlacementPacket>*>* Bank::getNextBankQ_dragonfly(ID_TYPE dstB
 
 u64 Bank::runLocalHist(){
 	memset(histogram, 0, G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE));
-	//u64 maxProcessedElems = 0;
-	u64 totalProcessedElems = 0;
+	u64 maxProcessedElems = 0;
+	//u64 totalProcessedElems = 0;
 	for(Subarray* sub : subarrayVector){
-		totalProcessedElems += sub->runLocalHist(histogram);
-//		if(subProcElems > maxProcessedElems){
-//			maxProcessedElems = subProcElems;
-//		}
+		u64 subProcElems = sub->runLocalHist(histogram);
+		if(subProcElems > maxProcessedElems){
+			maxProcessedElems = subProcElems;
+		}
 	}
-	return totalProcessedElems;
+	return maxProcessedElems;
 }
 
 
