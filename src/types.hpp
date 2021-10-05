@@ -47,7 +47,7 @@ typedef unsigned int LOCAL_ADDRESS_TYPE;
 #endif
 
 
-typedef uint64_t HIST_ELEM_TYPE;
+typedef uint32_t HIST_ELEM_TYPE;
 typedef uint32_t KEY_TYPE;
 
 typedef uint8_t u8;

@@ -25,27 +25,31 @@ Bank::~Bank(){
 	}
 }
 
-void Bank::prePlacementProducePackets(){
+//A bit of approximation here to make the simulation much faster!
+void Bank::producePackets(){
 	for(i64 i = G_NUM_SUBARRAY_PER_BANK - 1; i >= 0; i--){
 		subarrayVector[i]->prePlacementProducePackets(packetQ, histogram);
 	}
 }
 
-void Bank::prePlacementConsumePacketsOneCycle(){
+void Bank::routePacketsOneCycle(){
 	if(!packetQ.empty()){
 		Packet<PlacementPacket>* packet = packetQ.front();
-		packetQ.pop();
 		if(__builtin_expect(packet->dstBankAddr == selfIndex, 0)){
-			//in the correct bank, write to the destination subarray
-			subarrayVector[packet->dstSubId]->appendPacket(packet->payload);
+			if(stalledSub == 0){
+				packetQ.pop();
+				//in the correct bank, write to the destination subarray
+				subarrayVector[packet->dstSubId]->appendPacket(packet->payload);
 
-			//done with this packet
-			//placementPacketAllocator->free(packet); //Modified: no need to free any longer
+				//done with this packet
+				//placementPacketAllocator->free(packet); //Modified: no need to free any longer
 
-			//#pragma omp atomic
-			numOfInFlightPackets--;
+				//#pragma omp atomic
+				//numOfInFlightPackets--;
+			}
 		}
 		else{
+			packetQ.pop();
 			//forward packet
 			//hopCounter++;
 			//auto nextSubArrayQ = getNextComputeSubArrayQIdeal(tmpPacket->dstSubAddr);
@@ -82,12 +86,14 @@ std::queue <Packet<PlacementPacket>*>* Bank::getNextBankQ_dragonfly(ID_TYPE dstB
 		ID_TYPE dstBankId = extractBankId(dstBankAddr);
 		if(id != dstBankId){
 			//incorrect bank, go towards correct bank using dragonfly topology
+			numBankToBankPackets++;
 			u64 nextBank = dragonNextDst[id][dstBankId];
 			Layer* layer = (Layer*)parent;
 			return &(layer->bankVector[nextBank]->packetQ);
 		}
 		else{
 			//correct bank, go towards correct layer
+			numSegTSVPackets++;
 			u64 currLayer = extractLayerId(selfIndex);
 			u64 destLayer = extractLayerId(dstBankAddr);
 
@@ -103,17 +109,24 @@ std::queue <Packet<PlacementPacket>*>* Bank::getNextBankQ_dragonfly(ID_TYPE dstB
 	}
 	else{
 		//incorrect stack, go towards logic layer
+		numSegTSVPackets++;
 		return lowerLayerQ;
 	}
 
 	return nullptr;
 }
 
-void Bank::runLocalHist(){
+u64 Bank::runLocalHist(){
 	memset(histogram, 0, G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE));
+	u64 maxProcessedElems = 0;
+	//u64 totalProcessedElems = 0;
 	for(Subarray* sub : subarrayVector){
-		sub->runLocalHist(histogram);
+		u64 subProcElems = sub->runLocalHist(histogram);
+		if(subProcElems > maxProcessedElems){
+			maxProcessedElems = subProcElems;
+		}
 	}
+	return maxProcessedElems;
 }
 
 

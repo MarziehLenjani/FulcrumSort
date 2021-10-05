@@ -6,13 +6,13 @@
 #include <iostream>
 
 // Configuration
-#define G_NUM_DEVICES				4
-#define G_NUM_STACKS_PER_DEVICE		4
+#define G_NUM_DEVICES				1
+#define G_NUM_STACKS_PER_DEVICE		1
 #define G_NUM_LAYERS_PER_STACK		8
 #define G_NUM_BANKS_PER_LAYER		64
 #define G_NUM_SUBARRAY_PER_BANK		16
 #define G_SIZE_OF_SUBARRAY_IN_BYTE	(1024*1024UL)
-
+#define G_NUM_BYTES_IN_ROW			256
 
 #define G_NUM_TOTAL_STACKS			(G_NUM_DEVICES * G_NUM_STACKS_PER_DEVICE)
 #define G_NUM_TOTAL_LAYERS			(G_NUM_TOTAL_STACKS * G_NUM_LAYERS_PER_STACK)
@@ -21,33 +21,36 @@
 
 //#define G_NUM_OF_DATA_ELEMENTS		(G_NUM_TOTAL_SUBARRAY * 1024)
 
-#define G_NUM_WORDS_IN_ROW			64
-#define G_NUM_BYTES_IN_ROW			(G_NUM_WORDS_IN_ROW * sizeof(FULCRU_WORD_TYPE))
 
 #define G_RADIX_BITS				16
 #define G_KEY_BITS					(sizeof(KEY_TYPE) * 8)
-#define G_NUM_HIST_ELEMS			(1UL << 16)
+#define G_NUM_HIST_ELEMS			(1UL << G_RADIX_BITS)
 
+//use bank level histogram
+//#if (G_NUM_HIST_ELEMS > 8192)
+#define G_BANK_LEVEL_HISTOGRAM
+//#endif
 
 // Timings for modeling
-#define G_LOCAL_SORT_INIT_CYCLES					8
+//#define G_LOCAL_SORT_INIT_CYCLES					8
 #define G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT		1
 #define G_LOCAL_HIST_RESET_CYCLES_PER_ELEM			1
-#define G_LOCAL_HIST_CYCLES_PER_ELEM				2
+#define G_LOCAL_HIST_CYCLES_PER_ELEM				3
 #define G_REDUCTION_PER_HIST_ELEM_CYCLES			1
 #define G_OFFSET_PER_HIST_ELEM_CYCLES				1
 
-#define G_SYSTEM_CLOCK_PERIOD_NS					0.8
+#define G_INTCNT_CLOCK_PERIOD_NS					1.0
+#define G_LOGIC_CLOCK_PERIOD_NS						1.6
 
 #define G_HMC_LINK_EFFICIENCY						0.8
 #define G_HMC_LINK_PAYLOAD_BANDWIDTH_GB				(60.0 * 8 / 9 * G_HMC_LINK_EFFICIENCY)
 #define G_HMC_LINK_PAYLOAD_SIZE						8
-#define G_HMC_LINK_PACKET_PER_CLOCK					(G_HMC_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_HMC_LINK_PAYLOAD_SIZE)
+#define G_HMC_LINK_PACKET_PER_CLOCK					(G_HMC_LINK_PAYLOAD_BANDWIDTH_GB * G_INTCNT_CLOCK_PERIOD_NS / G_HMC_LINK_PAYLOAD_SIZE)
 
 #define G_NV_LINK_EFFICIENCY						0.8
 #define G_NV_LINK_PAYLOAD_BANDWIDTH_GB				(50 * G_NV_LINK_EFFICIENCY)
 #define G_NV_LINK_PAYLOAD_SIZE						8
-#define G_NV_LINK_PACKET_PER_CLOCK					(G_NV_LINK_PAYLOAD_BANDWIDTH_GB * G_SYSTEM_CLOCK_PERIOD_NS / G_NV_LINK_PAYLOAD_SIZE)
+#define G_NV_LINK_PACKET_PER_CLOCK					(G_NV_LINK_PAYLOAD_BANDWIDTH_GB * G_INTCNT_CLOCK_PERIOD_NS / G_NV_LINK_PAYLOAD_SIZE)
 
 extern u64 stateCounter[16];
 
@@ -77,14 +80,19 @@ extern u64 stateCounter[16];
 //#define G_ADDR_OF_TEMP_READ_ADDR			24
 
 
-#define PLACEMENT_QUEUE_MAX_CAPACITY		8
-#define PLACEMENT_QUEUE_HIGH_WATER_MARK		7
-#define PLACEMENT_QUEUE_LOW_WATER_MARK		2
+//Energy parameters (in nJ)
+#define G_ENR_ROW_ACT						0.544612
+#define G_ENR_BIT_OP						0.0001467846411
+#define G_ENR_INTEGER_ADDITION				0.0004992329586
+#define G_ENR_SUB_TO_SUB_PKT				0.00046875
+#define G_ENR_BANK_TO_BANK_PKT				0.0075
+#define G_ENR_SEG_TSV_PKT					0.0106
+#define G_ENR_SHIFT_TO_SIDE					0.0075
 
 
 // Global objects
 //extern EventQueue eventQueue
-extern u64 simCycles;
+extern double simTimeNs;
 extern u64 radixSortMask;
 extern u64 radixSortShift;
 
@@ -111,11 +119,20 @@ extern Packet<PlacementPacket>* packetPool;
 
 extern u64 placementRowHit;
 extern u64 placementRowMiss;
+extern u64 maxPlacementQSize;
 
 extern u64 elemPerSubarray;
 
 extern bool dragonEdges[64][64];
 extern u8 dragonNextDst[64][64];
+#include "PlacementEventQueue.hpp"
+extern PlacementEventQueue placementEventQ;
+
+//extern u64 numRowActivations;
+//extern u64 numSubToSubPackets;
+//extern u64 numBankToBankPackets;
+//extern u64 numSegTSVPackets;
+
 
 static u64 getNextPow2(u64 val, u64 minVal) {
 	if(val <= minVal){
@@ -132,8 +149,8 @@ static u64 getNextPow2(u64 val){
 	return getNextPow2(val, 2);
 }
 
-static void printSimCycle(const std::string& msg = ""){
-	std::cout << "[CYCLE " << simCycles << "] " << msg << std::endl;
+static void printSimTime(const std::string& msg = ""){
+	std::cout << "[TIME " << simTimeNs << " ns] " << msg << std::endl;
 }
 
 static bool radixComp(KEY_TYPE a, KEY_TYPE b){

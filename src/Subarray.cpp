@@ -26,7 +26,7 @@ using namespace std;
 Subarray::Subarray(ID_TYPE l_id, PhysicalComponent *l_parent) : PhysicalComponent(l_id, l_parent) {
 	//TODO: do initializations specific for the subarray class here
 	//memoryArrayObj = new MemoryObject(G_SIZE_OF_SUBARRAY_IN_BYTE);
-	//bank = (Bank*) parent;
+	bank = (Bank*) parent;
 	//layer = (Layer*) (bank->parent);
 	//stack = (Stack*) (layer->parent);
 	//device = (Device*) (stack->parent);
@@ -36,7 +36,7 @@ Subarray::Subarray(ID_TYPE l_id, PhysicalComponent *l_parent) : PhysicalComponen
 //	}
 
 	keys = (KEY_TYPE*)malloc(sizeof(KEY_TYPE) * elemPerSubarray);
-	placementPackets = (PlacementPacket*)malloc(sizeof(PlacementPacket) * elemPerSubarray);
+	//placementPackets = (PlacementPacket*)malloc(sizeof(PlacementPacket) * elemPerSubarray);
 }
 
 Subarray::~Subarray() {
@@ -47,8 +47,140 @@ Subarray::~Subarray() {
 
 	free(keys);
 	keys = nullptr;
-	free(placementPackets);
-	placementPackets = nullptr;
+	//free(placementPackets);
+	//placementPackets = nullptr;
+}
+
+void Subarray::prePlacementProducePackets(std::queue <Packet<PlacementPacket>* > &packetQ, HIST_ELEM_TYPE* histogram){
+	placementSchState = PSTATE_PLACEMENT;
+	u64 pktIdxBase = selfIndex * elemPerSubarray;
+	for(i64 currReadIdx = readEndIdx - 1; currReadIdx >= readStartIdx; currReadIdx--){
+		KEY_TYPE key = keys[currReadIdx];
+		FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
+		HIST_ELEM_TYPE location = --histogram[radix % G_NUM_HIST_ELEMS];
+
+		//push into queue
+		u64 dstSubAddr = location >> locShiftAmt;
+		LOCAL_ADDRESS_TYPE dstOff = location & ((1UL << locShiftAmt) - 1);
+
+		Packet<PlacementPacket>* tmpPacket = packetPool + pktIdxBase + currReadIdx;
+		tmpPacket->dstBankAddr = dstSubAddr / G_NUM_SUBARRAY_PER_BANK;
+		tmpPacket->dstSubId = dstSubAddr % G_NUM_SUBARRAY_PER_BANK;
+		tmpPacket->payload.key = key;
+		tmpPacket->payload.offset = dstOff * sizeof(KEY_TYPE);
+
+		packetQ.push(tmpPacket);
+
+		#pragma omp atomic
+		numOfInFlightPackets++;
+
+		//Packet have to traverse through all subarray upto 0.
+		//Then reaching the correct bank, it has to traverse to the destination subarray.
+		bank->numSubToSubPackets += (id + tmpPacket->dstSubId);
+	}
+}
+
+void Subarray::checkPlacementBuffer(){
+	//assert(!placementBuffer.isEmpty());
+
+	const PlacementPacket& pkt = placementBuffer.front();
+	u64 targetAddr = pkt.offset;
+	u64 targetRow = extractRowIndexFromLocalAddress(targetAddr);
+
+	if(currOpenRow != targetRow){
+		//placementRowMiss++;
+		bank->numRowActivations++;
+		currOpenRow = targetRow;
+		placementEventQ.schedule(this, G_ROW_ACCESS_LATENCY);
+
+		//waitCounter = G_ROW_ACCESS_LATENCY;
+		//placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
+	}
+	else{
+		//placementRowHit++;
+		if(placementBuffer.isFull()){
+			bank->stalledSub--;	//going to pop an element, so the buffer will no longer be full
+		}
+		placementBuffer.pop();
+		//already latched to another walker
+		keys[targetAddr / sizeof(KEY_TYPE)] = pkt.key;
+
+		if(!placementBuffer.isEmpty()){
+			//Done with this packet. Schedule check for next packet on the next cycle
+			placementEventQ.schedule(this, 1);
+		}
+
+		numOfInFlightPackets--;
+	}
+}
+
+void Subarray::runPlacementOneCycle(){
+	switch(placementSchState){
+
+		case PSTATE_PLACEMENT:
+			if(!placementBuffer.isEmpty()){
+				//sequential read of placement packets
+				const PlacementPacket& pkt = placementBuffer.front();
+				targetAddr = pkt.offset;
+
+				if(currOpenRow != extractRowIndexFromLocalAddress(targetAddr)){
+					//placementRowMiss++;
+					bank->numRowActivations++;
+					waitCounter = G_ROW_ACCESS_LATENCY;
+					placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
+				}
+				else{
+					//placementRowHit++;
+					if(placementBuffer.isFull()){
+						bank->stalledSub--;	//going to pop an element, so the buffer will no longer be full
+					}
+					placementBuffer.pop();
+					//already latched to another walker
+					keys[targetAddr / sizeof(KEY_TYPE)] = pkt.key;
+
+					numOfInFlightPackets--;
+
+		//					if(targetAddr + sizeof(KEY_TYPE) > memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR)){
+		//						memoryArrayObj->writeLocalAddr(G_ADDR_OF_READ_END_ADDR, targetAddr + sizeof(KEY_TYPE));
+		//					}
+
+					//go to next element
+					//appendIdx++;
+				}
+			}
+			break;
+
+
+		case PSTATE_STALLED_ON_PLACEMENT:
+			if(!--waitCounter){
+				currOpenRow = extractRowIndexFromLocalAddress(targetAddr);	//timer expired. Target row is now open.
+				//walkers[2]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
+				//walkers[2]->latchedRowIndex = currOpenRow;
+				placementSchState = PSTATE_PLACEMENT;
+			}
+			break;
+
+
+		default:
+			std::cerr << "Invalid placement state!!" << std::endl;
+			exit(-1);
+	}
+}
+
+void Subarray::appendPacket(PlacementPacket& payload){
+	if(placementBuffer.isEmpty()){
+		//is going to insert an element
+		//schedule check on next cycle
+		placementEventQ.schedule(this, 1);
+	}
+	placementBuffer.push(payload);
+	if(placementBuffer.isFull()){
+		bank->stalledSub++;
+	}
+	if(placementBuffer.size() > maxPlacementQSize){
+		maxPlacementQSize = placementBuffer.size();
+	}
+	//placementPackets[appendIdx++] = payload;
 }
 
 //void computSubarray::runOneSubClokCycle(){

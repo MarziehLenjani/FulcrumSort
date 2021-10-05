@@ -22,6 +22,12 @@ private:
 
 public:
 	ID_TYPE selfIndex = 0;
+	u64 numSubToSubPackets = 0;
+	u64 numBankToBankPackets = 0;
+	u64 numSegTSVPackets = 0;
+	u64 numRowActivations = 0;
+
+	u64 stalledSub = 0;
 
 	std::vector<Subarray *> subarrayVector;
 
@@ -36,11 +42,12 @@ public:
 	Bank(ID_TYPE l_id, PhysicalComponent * l_parent);
 	~Bank();
 
-	void prePlacementProducePackets();
-	void prePlacementConsumePacketsOneCycle();
+	void producePackets();
+	void routePacketsOneCycle();
+
 
 	void initLayerQ();
-	void runLocalHist();
+	u64 runLocalHist();
 };
 
 

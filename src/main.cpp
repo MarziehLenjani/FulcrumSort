@@ -28,13 +28,24 @@ int main(int argc, char **argv)
 
 	elemPerSubarray = atol(argv[1]);
 	u64 G_NUM_OF_DATA_ELEMENTS = elemPerSubarray * G_NUM_TOTAL_SUBARRAY;
+	if(G_NUM_OF_DATA_ELEMENTS > 0xFFFFFFFFULL){
+		assert(sizeof(HIST_ELEM_TYPE) == 8);
+	}
 
-	u64 totalSimCyclesLocalSort = 0;
-	u64 totalSimCyclesHistGen = 0;
-	u64 totalSimCyclesPrePlacement = 0;
-	u64 totalSimCyclesPlacement = 0;
-	u64 currStepCycles = 0;
-    long long int c=0;
+	double totalSimTimeLocalSort = 0;
+	double totalSimTimeLocalHistGen = 0;
+	double totalSimTimeHistPrefixSum = 0;
+	//double totalSimTimePrePlacement = 0;
+	double totalSimTimePlacement = 0;
+	double currStepTime = 0;
+
+	u64 totNumSubToSubPackets = 0;
+	u64 totNumBankToBankPackets = 0;
+	u64 totNumSegTSVPackets = 0;
+	u64 totNumRowActivations = 0;
+	u64 totNumBitwiseOp = 0;
+	u64 totNumShiftToSide = 0;
+	u64 totNumAdditions = 0;
 
     assert((G_NUM_BANKS_PER_LAYER % 2) == 0);
 
@@ -129,6 +140,12 @@ int main(int argc, char **argv)
 		}
 
 		u64 totWaitCyclesInQ = 0;
+		u64 rowPerSubForKeys = ceil(1.0 * elemPerSubarray * sizeof(KEY_TYPE) / G_NUM_BYTES_IN_ROW);
+		u64 rowPerSubForPlcPkt = ceil(1.0 * elemPerSubarray * sizeof(PlacementPacket) / G_NUM_BYTES_IN_ROW);
+
+#ifdef G_BANK_LEVEL_HISTOGRAM
+		u64 rowPerBankForHist = ceil(1.0 * G_NUM_HIST_ELEMS * sizeof(HIST_ELEM_TYPE) / G_NUM_BYTES_IN_ROW);
+#endif
 
 		for(radixStartBit = 0; radixStartBit < G_KEY_BITS; radixStartBit += G_RADIX_BITS){
 			radixEndBit = min(G_KEY_BITS, radixStartBit + G_RADIX_BITS);
@@ -150,10 +167,20 @@ int main(int argc, char **argv)
 				sub->runLocalRadixSort();
 				//sub->printReadElements();
 			}
-			currStepCycles = G_LOCAL_SORT_INIT_CYCLES + elemPerSubarray * (radixEndBit - radixStartBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT;
-			simCycles += currStepCycles;
-			totalSimCyclesLocalSort += currStepCycles;
-			printSimCycle("\tFinished local sort");
+			currStepTime = elemPerSubarray * (radixEndBit - radixStartBit) * G_LOCAL_SORT_CYCLES_PER_ELEM_PER_BIT * G_LOGIC_CLOCK_PERIOD_NS;
+			simTimeNs += currStepTime;
+			totalSimTimeLocalSort += currStepTime;
+
+			//row activations for local sorting (2 for reading from src and writing to dst)
+			totNumRowActivations += rowPerSubForKeys * 2 * (radixEndBit - radixStartBit) * G_NUM_TOTAL_SUBARRAY;
+
+			//have to move all the data elements once to the side of the subarray, then write back
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2;
+
+			//bitwise op for local sorting (2 for SHIFT and AND operations (extracting radix))
+			totNumBitwiseOp += G_NUM_OF_DATA_ELEMENTS * 2 * (radixEndBit - radixStartBit);
+
+			printSimTime("\tFinished local sort");
 
 			// Initialization that are needed only once per radix bits
 			#pragma omp parallel for
@@ -181,20 +208,25 @@ int main(int argc, char **argv)
 //					simCycles++;
 //				}
 
-				#pragma omp parallel for
+				u64 maxProcessedElems = 0;	//max processed elem by a subarray
 				for(Bank* bank : pulley.bankVector){
-					bank->runLocalHist();
+					u64 procElems = bank->runLocalHist();
+					if(procElems > maxProcessedElems){
+						maxProcessedElems = procElems;
+					}
 				}
-				currStepCycles = (elemPerSubarray * G_LOCAL_HIST_CYCLES_PER_ELEM) + (G_LOCAL_HIST_RESET_CYCLES_PER_ELEM * G_NUM_HIST_ELEMS);
-				simCycles += currStepCycles;
-				totalSimCyclesHistGen += currStepCycles;
-				printSimCycle("\t\tFinished building local histogram");
+				cout << "Max processed elem: " << maxProcessedElems << endl;
+				//currStepTime = (maxProcessedElems * G_LOCAL_HIST_CYCLES_PER_ELEM) + (G_LOCAL_HIST_RESET_CYCLES_PER_ELEM * G_NUM_HIST_ELEMS);
+				currStepTime = (maxProcessedElems * G_LOCAL_HIST_CYCLES_PER_ELEM) * G_LOGIC_CLOCK_PERIOD_NS + (G_NUM_SUBARRAY_PER_BANK - 1) * G_INTCNT_CLOCK_PERIOD_NS;
+				simTimeNs += currStepTime;
+				totalSimTimeLocalHistGen += currStepTime;
+				printSimTime("\t\tFinished building local histogram");
 				//for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 				//	sub->printHist();
 				//}
 
 
-				//----------------------------------- Histogram Reduction -------------------------------------
+				//----------------------------------- Histogram Prefix sum -------------------------------------
 //				for(u64 i = 1; i < G_NUM_TOTAL_SUBARRAY; i++){
 //					HIST_ELEM_TYPE* currSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i]->memoryArrayObj->data + histStartAddr);
 //					HIST_ELEM_TYPE* prevSubHist = (HIST_ELEM_TYPE*)(pulley.subarrayVector[i-1]->memoryArrayObj->data + histStartAddr);
@@ -212,12 +244,13 @@ int main(int argc, char **argv)
 						currBankHist[j] += prevBankHist[j];
 					}
 				}
-				//Approximate the timing of histogram reduction. Can be done because the accesses are sequential.
-				currStepCycles = (G_NUM_HIST_ELEMS + G_NUM_TOTAL_SUBARRAY) * G_REDUCTION_PER_HIST_ELEM_CYCLES;
-				simCycles += currStepCycles;
-				totalSimCyclesHistGen += currStepCycles;
+				//Approximate the timing of histogram reduction
+				currStepTime = 	G_NUM_HIST_ELEMS * G_LOGIC_CLOCK_PERIOD_NS
+								+ G_NUM_TOTAL_BANKS * (G_LOGIC_CLOCK_PERIOD_NS + G_INTCNT_CLOCK_PERIOD_NS);
+				simTimeNs += currStepTime;
+				totalSimTimeHistPrefixSum += currStepTime;
 
-				//Calculate prefix sum of the last subarray
+				//Calculate prefix sum of the last bank
 				HIST_ELEM_TYPE prefixSum[G_NUM_HIST_ELEMS];
 				prefixSum[0] = lastIdx;
 				HIST_ELEM_TYPE* lastBankHist = pulley.bankVector[G_NUM_TOTAL_BANKS-1]->histogram;
@@ -241,55 +274,64 @@ int main(int argc, char **argv)
 					}
 				}
 				//Approximate the timing of offset calculation (we can also ignore this part as the time required would be really small)
-				currStepCycles = G_NUM_HIST_ELEMS * G_OFFSET_PER_HIST_ELEM_CYCLES;
-				simCycles += currStepCycles;
-				totalSimCyclesHistGen += currStepCycles;
-				printSimCycle("\t\tFinished reducing histogram");
+				//currStepCycles = G_NUM_HIST_ELEMS * G_OFFSET_PER_HIST_ELEM_CYCLES;
+				//simCycles += currStepCycles;
+				//totalSimCyclesHistGen += currStepCycles;
+				printSimTime("\t\tFinished reducing histogram");
 
 
-				//--------------------------------------- Pre-placement ------------------------------------------
+				//--------------------------------------- Placement ------------------------------------------
+				numOfInFlightPackets = 0;
 				#pragma omp parallel for
 				for(Bank* bank : pulley.bankVector){
-					bank->prePlacementProducePackets();
+					bank->producePackets();
 				}
-
-				numOfInFlightPackets = G_NUM_OF_DATA_ELEMENTS;
 
 				while(numOfInFlightPackets != 0){
 					for(Bank* bank : pulley.bankVector){
-						bank->prePlacementConsumePacketsOneCycle();
+						bank->routePacketsOneCycle();
 					}
+					const vector<Subarray*>& eq = placementEventQ.getCurrEventList();
+					for(Subarray* sub : eq){
+						sub->checkPlacementBuffer();
+					}
+//					for(Subarray* sub : pulley.subarrayVector){
+//						sub->runPlacementOneCycle();
+//					}
+#if (G_NUM_STACKS_PER_DEVICE > 1)
 					for(LogicLayer* logicLayer : pulley.logicLayerVector){
 						logicLayer->runOneCycle();
 					}
+#endif
+#if (G_NUM_DEVICES > 1)
 					for(Device* dev : pulley.deviceVector){
 						dev->runLinkOneClock();
 					}
+#endif
 
-					simCycles++;
-					totalSimCyclesPrePlacement++;
+					placementEventQ.clock();
+					simTimeNs += G_INTCNT_CLOCK_PERIOD_NS;
+					totalSimTimePlacement += G_INTCNT_CLOCK_PERIOD_NS;
+					//totalSimCyclesPrePlacement++;
 					//totWaitCyclesInQ += numOfInFlightPackets;
 				}
 				//cout << "Produced packets: " << producedPackets << endl;
-				printSimCycle("\t\tFinished Pre-placement");
+				printSimTime("\t\tFinished Placement");
 			}
 
 			//--------------------------------------- Placement ------------------------------------------
-			#pragma omp parallel for
-			for(Subarray* sub : pulley.subarrayVector){
-				sub->initPlacementPerRadix();
-			}
 
-			numOfProcessedSubarrays = 0;
-			while(numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY){
-				#pragma omp parallel for
-				for(Subarray* sub : pulley.subarrayVector){
-					sub->runPlacementOneCycle();
-				}
-				simCycles++;
-				totalSimCyclesPlacement++;
-			}
-			printSimCycle("\t\tFinished Placement");
+//			numOfProcessedSubarrays = 0;
+//			while(numOfProcessedSubarrays != G_NUM_TOTAL_SUBARRAY){
+//				#pragma omp parallel for
+//				for(Subarray* sub : pulley.subarrayVector){
+//					sub->runPlacementOneCycle();
+//				}
+//				simCycles++;
+//				totalSimCyclesPlacement++;
+//			}
+//
+//			printSimCycle("\t\tFinished Placement");
 
 
 			//Prepare for next radix
@@ -302,8 +344,45 @@ int main(int argc, char **argv)
 //			for(computSubarray* sub : stackedMemoryObj.computSubarrayVector){
 //				sub->printReadElements();
 //			}
+			//numSubToSubPackets += elemPerSubarray * G_NUM_SUBARRAY_PER_BANK * (G_NUM_SUBARRAY_PER_BANK - 1);
 
-			printSimCycle("\tdone");
+
+			//Energy calculation
+#ifdef G_BANK_LEVEL_HISTOGRAM
+			assert(G_KEY_BITS == 32); //for now, this part only works for 32-bit keys
+
+			//local hist
+			totNumRowActivations += rowPerSubForKeys * G_NUM_TOTAL_SUBARRAY + rowPerBankForHist * G_NUM_TOTAL_BANKS * 16;
+			totNumSubToSubPackets += (elemPerSubarray * G_NUM_SUBARRAY_PER_BANK * (G_NUM_SUBARRAY_PER_BANK - 1) / 2) * G_NUM_TOTAL_BANKS;
+			totNumBitwiseOp += G_NUM_OF_DATA_ELEMENTS * 2; //for extracting radix (SHIFT + AND)
+			totNumAdditions += G_NUM_OF_DATA_ELEMENTS + G_NUM_HIST_ELEMS * 15 * G_NUM_TOTAL_BANKS; //One comparison per element
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2 + G_NUM_HIST_ELEMS * 16 * G_NUM_TOTAL_BANKS; //One for keys being sent to the side, one for reduction at the bank
+
+
+			//prefix sum
+			totNumRowActivations += rowPerBankForHist * G_NUM_TOTAL_BANKS * 2; //one for read, one for write
+			totNumBankToBankPackets += (G_NUM_HIST_ELEMS - 1) * G_NUM_TOTAL_BANKS;
+			totNumSegTSVPackets += (G_NUM_HIST_ELEMS - 1) * G_NUM_LAYERS_PER_STACK * G_NUM_BANKS_PER_LAYER / 2;
+			totNumAdditions += (G_NUM_HIST_ELEMS - 1) * G_NUM_TOTAL_BANKS;
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS * 2;
+
+
+			//Placement (fixed portions are added here, rest added during simulation)
+			totNumRowActivations += rowPerSubForKeys * G_NUM_TOTAL_SUBARRAY * 2 + rowPerBankForHist * G_NUM_TOTAL_BANKS;	//for packet generation
+			//totNumRowActivations += rowPerSubForPlcPkt * G_NUM_TOTAL_SUBARRAY;	//for append
+			//bitwise ops: extract radix (SHIFT + AND), determine location (SHIFT for subarray id + AND for offset)
+			totNumBitwiseOp += 4 * G_NUM_OF_DATA_ELEMENTS;
+			totNumAdditions += G_NUM_OF_DATA_ELEMENTS;	//one subtraction per element
+			totNumShiftToSide += G_NUM_OF_DATA_ELEMENTS + G_NUM_HIST_ELEMS * G_NUM_TOTAL_BANKS //move key and histogram to APLU
+								+ G_NUM_OF_DATA_ELEMENTS;	//move key from buffer to correct location
+
+
+#else
+#error
+#endif
+
+
+			printSimTime("\tdone");
 			cout << endl;
 		}
 
@@ -312,14 +391,40 @@ int main(int argc, char **argv)
 //			sub->printReadElements();
 //		}
 
-		printSimCycle("FINISHED!");
-		u64 totalCycles = totalSimCyclesLocalSort + totalSimCyclesHistGen + totalSimCyclesPrePlacement + totalSimCyclesPlacement;
+		printSimTime("FINISHED!");
+		//u64 totalTimeNs = totalSimTimeLocalSort + totalSimTimesHistGen + totalSimTimePlacement;
 		cout << endl;
-		cout << "            Total cycles: " << totalCycles << endl;
-		cout << "       Local Sort cycles: " << totalSimCyclesLocalSort << " (" << totalSimCyclesLocalSort * 100.0 / totalCycles << " %)" << endl;
-		cout << "    Histogram gen cycles: " << totalSimCyclesHistGen << " (" << totalSimCyclesHistGen * 100.0 / totalCycles << " %)" << endl;
-		cout << "    Pre-palcement cycles: " << totalSimCyclesPrePlacement << " (" << totalSimCyclesPrePlacement * 100.0 / totalCycles << " %)" << endl;
-		cout << "        Placement cycles: " << totalSimCyclesPlacement << " (" << totalSimCyclesPlacement * 100.0 / totalCycles << " %)" << endl;
+		cout << "            Total time (ns): " << (u64)simTimeNs << endl;
+		cout << "       Local Sort time (ns): " << (u64)totalSimTimeLocalSort << " (" << totalSimTimeLocalSort * 100.0 / simTimeNs << " %)" << endl;
+		//cout << "   Local Hist gen time (ns): " << (u64)totalSimTimeLocalHistGen << " (" << totalSimTimeLocalHistGen * 100.0 / simTimeNs << " %)" << endl;
+		//cout << "  Hist prefix-sum time (ns): " << (u64)totalSimTimeHistPrefixSum << " (" << totalSimTimeHistPrefixSum * 100.0 / simTimeNs << " %)" << endl;
+		//cout << "    Pre-palcement cycles: " << totalSimCyclesPrePlacement << " (" << totalSimCyclesPrePlacement * 100.0 / totalCycles << " %)" << endl;
+		u64 totHistGenTime = totalSimTimeLocalHistGen + totalSimTimeHistPrefixSum;
+		cout << "   Total Hist gen time (ns): " << totHistGenTime << " (" << totHistGenTime * 100.0 / simTimeNs << " %)" << endl;
+		cout << "        Placement time (ns): " << (u64)totalSimTimePlacement << " (" << totalSimTimePlacement * 100.0 / simTimeNs << " %)" << endl;
+
+		for(Bank* bank : pulley.bankVector){
+			totNumSubToSubPackets += bank->numSubToSubPackets * sizeof(PlacementPacket) / 4;
+			totNumBankToBankPackets += bank->numBankToBankPackets  * sizeof(PlacementPacket) / 4;
+			totNumSegTSVPackets += bank->numSegTSVPackets  * sizeof(PlacementPacket) / 4;
+			totNumRowActivations += bank->numRowActivations;
+		}
+		cout << endl << "Energy measurements: " << endl;
+//		cout << "          row activations: " << totNumRowActivations << endl;
+//		cout << "       Sub-to-sub packets: " << totNumSubToSubPackets << endl;
+//		cout << "     Bank-to-bank-packets: " << totNumBankToBankPackets << endl;
+//		cout << "    Segmented TSV packets: " << totNumSegTSVPackets << endl;
+//		cout << "              Bitwise ops: " << totNumBitwiseOp << endl;
+//		cout << "                Additions: " << totNumAdditions << endl;
+//		cout << "         Shifting to side: " << totNumShiftToSide << endl;
+		cout << totNumRowActivations << " ";
+		cout <<	totNumSubToSubPackets << " ";
+		cout <<	totNumBankToBankPackets << " ";
+		cout <<	totNumSegTSVPackets << " ";
+		cout <<	totNumBitwiseOp << " ";
+		cout <<	totNumAdditions << " ";
+		cout <<	totNumShiftToSide << endl;
+
 
 		//delete placementPacketAllocator;
 		free(packetPool);
@@ -357,7 +462,18 @@ int main(int argc, char **argv)
 
 		//cout << endl << "Placement row accesses: " << placementRowMiss + placementRowHit << endl;
 //		cout << endl << "Placement row hits: " << placementRowHit - placementRowMiss << endl;
-//		cout << "Placement row misses: " << placementRowMiss << endl;
+		//cout << "Maximum placement Q size: " << maxPlacementQSize << endl;
+
+		cout << endl;
+		cout << "Throughput (GB/s): " << G_NUM_OF_DATA_ELEMENTS * sizeof(KEY_TYPE) * 1e9 / 1024 / 1024 / 1024 / simTimeNs << endl;
+		double totEnergy = 	totNumRowActivations * G_ENR_ROW_ACT
+							+ totNumSubToSubPackets * G_ENR_SUB_TO_SUB_PKT
+							+ totNumBankToBankPackets * G_ENR_BANK_TO_BANK_PKT
+							+ totNumSegTSVPackets * G_ENR_SEG_TSV_PKT
+							+ totNumBitwiseOp * G_ENR_BIT_OP
+							+ totNumAdditions * G_ENR_INTEGER_ADDITION
+							+ totNumShiftToSide * G_ENR_SHIFT_TO_SIDE;
+		cout << "Power (W): " << totEnergy / simTimeNs << endl;
 
 		cout << "[VALIDITY CHECK PASSED]" << endl;
 	}

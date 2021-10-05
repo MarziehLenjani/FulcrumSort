@@ -1,9 +1,10 @@
 #include "globals.hpp"
 #include "EventQueue.hpp"
 #include "PacketAllocator.hpp"
+#include "PlacementEventQueue.hpp"
 
 EventQueue eventQueue;
-u64 simCycles = 0;
+double simTimeNs = 0.0;
 
 u64 radixSortMask = 0;
 u64 radixSortShift = 0;
@@ -32,5 +33,14 @@ u64 placementRowMiss = 0;
 
 u64 elemPerSubarray = 0;
 
+//u64 numRowActivations = 0;
+//u64 numSubToSubPackets = 0;
+//u64 numBankToBankPackets = 0;
+//u64 numSegTSVPackets = 0;
+
+
 bool dragonEdges[64][64];
 u8 dragonNextDst[64][64];
+
+PlacementEventQueue placementEventQ;
+u64 maxPlacementQSize = 0;

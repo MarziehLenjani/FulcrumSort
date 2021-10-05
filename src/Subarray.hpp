@@ -8,6 +8,7 @@
 #ifndef COMPUTSUBARRAY_HPP_
 #define COMPUTSUBARRAY_HPP_
 
+#include <cstdlib>
 #include <queue>
 #include <vector>
 #include <algorithm>
@@ -18,6 +19,7 @@
 #include <queue>
 #include "Packet.hpp"
 #include "PhysicalComponent.hpp"
+#include "Buffer.hpp"
 
 //#define NUM_WALKERS		3
 
@@ -26,7 +28,7 @@
 //class Device;
 //class Stack;
 //class Layer;
-//class Bank;
+class Bank;
 
 //class MemoryObject;
 
@@ -44,18 +46,20 @@ public:
 
 	FULCRU_WORD_TYPE selfIndex = 0;
 	KEY_TYPE* keys = nullptr;
-	PlacementPacket* placementPackets = nullptr;
 
 	i64 readStartIdx = 0;
 	i64 readEndIdx = 0;
 
-	i64 appendIdx = 0;
+	//PlacementPacket* placementPackets = nullptr;
+	//i64 appendIdx = 0;
 
 	u64 currOpenRow = -1;
-	bool finishedPlacementRead = false;
+	//bool finishedPlacementRead = false;
 	u64 waitCounter = 0;
 
 	LOCAL_ADDRESS_TYPE targetAddr = 0;
+
+	Buffer<PlacementPacket, G_NUM_BYTES_IN_ROW / sizeof(PlacementPacket)> placementBuffer;
 
 //	LOCAL_ADDRESS_TYPE baseWriteAddr = 0;
 //	LOCAL_ADDRESS_TYPE currWriteAddr = 0;
@@ -77,7 +81,7 @@ public:
 	//Device* device;
 	//Stack * stack;
 	//Layer * layer;
-	//Bank* bank;
+	Bank* bank;
 
 
 	//Walker* walkers[NUM_WALKERS];
@@ -129,14 +133,15 @@ public:
 
 	void initPerRadix(){
 		readStartIdx = 0;
-		appendIdx = 0;
+		//appendIdx = 0;
 
 
 		//writeStartAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_WRITE_START_ADDR);
 		//writeEndAddr = writeStartAddr;
 	}
 
-	void runLocalHist(HIST_ELEM_TYPE* histogram){
+	u64 runLocalHist(HIST_ELEM_TYPE* histogram){
+		u64 processedElemCount = 0;
 		readEndIdx = readStartIdx;
 		while(readEndIdx < elemPerSubarray){
 			KEY_TYPE key = keys[readEndIdx];
@@ -146,7 +151,9 @@ public:
 			}
 			histogram[radix % G_NUM_HIST_ELEMS]++;
 			readEndIdx++;
+			processedElemCount++;
 		}
+		return processedElemCount;
 	}
 
 	enum PlacementSchState {
@@ -161,30 +168,9 @@ public:
 	} placementSchState = PSTATE_INVALID;
 
 
-	void prePlacementProducePackets(std::queue <Packet<PlacementPacket>* > &packetQ, HIST_ELEM_TYPE* histogram){
-		u64 pktIdxBase = selfIndex * elemPerSubarray;
-		for(i64 currReadIdx = readEndIdx - 1; currReadIdx >= readStartIdx; currReadIdx--){
-			KEY_TYPE key = keys[currReadIdx];
-			FULCRU_WORD_TYPE radix = extractBits(key, radixEndBit, radixStartBit);
-			HIST_ELEM_TYPE location = --histogram[radix % G_NUM_HIST_ELEMS];
+	void prePlacementProducePackets(std::queue <Packet<PlacementPacket>* > &packetQ, HIST_ELEM_TYPE* histogram);
 
-			//push into queue
-			u64 dstSubAddr = location >> locShiftAmt;
-			LOCAL_ADDRESS_TYPE dstOff = location & ((1UL << locShiftAmt) - 1);
-
-			Packet<PlacementPacket>* tmpPacket = packetPool + pktIdxBase + currReadIdx;
-			tmpPacket->dstBankAddr = dstSubAddr / G_NUM_SUBARRAY_PER_BANK;
-			tmpPacket->dstSubId = dstSubAddr % G_NUM_SUBARRAY_PER_BANK;
-			tmpPacket->payload.key = key;
-			tmpPacket->payload.offset = dstOff * sizeof(KEY_TYPE);
-
-			packetQ.push(tmpPacket);
-		}
-	}
-
-	void appendPacket(PlacementPacket& payload){
-		placementPackets[appendIdx++] = payload;
-	}
+	void appendPacket(PlacementPacket& payload);
 
 
 //	void runPrePlacementConsumerOneCycle(){
@@ -277,86 +263,30 @@ public:
 //	}
 
 
-	void initPlacementPerRadix(){
-		finishedPlacementRead = false;
+//	void initPlacementPerRadix(){
+//		finishedPlacementRead = false;
+//
+//		appendIdx = 0;
+//
+//		//currReadAddr = writeStartAddr;
+//		//baseWriteAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
+//
+//		//assert(writeStartAddr <= writeEndAddr);
+//
+////		if(currReadAddr >= writeEndAddr){
+////			//Finished going through all elements in range
+////			finishedPlacementRead = true;
+////			//#pragma omp atomic
+////			numOfProcessedSubarrays++;
+////		}
+////		else {
+////			placementSchState = PSTATE_PLACEMENT;
+////		}
+//		placementSchState = PSTATE_PLACEMENT;
+//	}
 
-		appendIdx = 0;
-
-		//currReadAddr = writeStartAddr;
-		//baseWriteAddr = memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_START_ADDR);
-
-		//assert(writeStartAddr <= writeEndAddr);
-
-//		if(currReadAddr >= writeEndAddr){
-//			//Finished going through all elements in range
-//			finishedPlacementRead = true;
-//			//#pragma omp atomic
-//			numOfProcessedSubarrays++;
-//		}
-//		else {
-//			placementSchState = PSTATE_PLACEMENT;
-//		}
-		placementSchState = PSTATE_PLACEMENT;
-	}
-
-	void runPlacementOneCycle(){
-		if(!finishedPlacementRead){
-
-			//stateCounter[placementSchState]++;
-
-			switch(placementSchState){
-
-			case PSTATE_PLACEMENT:
-			{
-				const PlacementPacket& pkt = placementPackets[appendIdx];
-				targetAddr = pkt.offset;
-
-				if(currOpenRow != extractRowIndexFromLocalAddress(targetAddr)){
-					//placementRowMiss++;
-					waitCounter = G_ROW_ACCESS_LATENCY;
-					placementSchState = PSTATE_STALLED_ON_PLACEMENT;		//row not latched on walker 0
-				}
-				else{
-					//placementRowHit++;
-					//already latched
-					keys[targetAddr / sizeof(KEY_TYPE)] = pkt.key;
-
-//					if(targetAddr + sizeof(KEY_TYPE) > memoryArrayObj->readLocalAddr(G_ADDR_OF_READ_END_ADDR)){
-//						memoryArrayObj->writeLocalAddr(G_ADDR_OF_READ_END_ADDR, targetAddr + sizeof(KEY_TYPE));
-//					}
-
-					//go to next element
-					appendIdx++;
-
-					if(appendIdx == elemPerSubarray){
-						//Finished going through all elements in range
-						finishedPlacementRead = true;
-
-						#pragma omp atomic
-						numOfProcessedSubarrays++;
-					}
-				}
-
-			}
-				break;
-
-
-			case PSTATE_STALLED_ON_PLACEMENT:
-				if(!--waitCounter){
-					currOpenRow = extractRowIndexFromLocalAddress(targetAddr);	//timer expired. Target row is now open.
-					//walkers[2]->latchedRow->data = memoryArrayObj->data + G_NUM_BYTES_IN_ROW * currOpenRow;
-					//walkers[2]->latchedRowIndex = currOpenRow;
-					placementSchState = PSTATE_PLACEMENT;
-				}
-				break;
-
-
-			default:
-				std::cerr << "Invalid placement state!!" << std::endl;
-				exit(-1);
-			}
-		}
-	}
+	void runPlacementOneCycle();
+	void checkPlacementBuffer();
 
 
 //	void swapReadWriteArray(){
