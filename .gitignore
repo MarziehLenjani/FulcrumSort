@@ -1,2 +1,5 @@
 obj/*
+.project
+.cproject
+.settings/
 main.out
