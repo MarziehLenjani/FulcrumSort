@@ -3,6 +3,7 @@
 
 
 #include<map>
+#include <cstdint>
 #include <boost/assign/list_of.hpp>
 #include <cassert>
 #include <stdio.h>
@@ -34,14 +35,33 @@ using namespace boost::assign;
 #define PHYSICAL_EXTERNAL_ADDRESS_TYPE_UNSIGHED_INT
 #define PHYSICAL_EXTERNAL_ADDRESS_TYPE unsigned  int
 #endif
+
+
 #define FULCRUM_32_BIT
+
 #ifdef FULCRUM_32_BIT
-#define READ_DATA_TYPE_IN_MEMORY_ARRAY unsigned char
-#define FULCRU_WORD_TYPE unsigned int
-#define ID_TYPE unsigned int
-#define LOCAL_ADDRESS_TYPE unsigned int
+typedef unsigned char READ_DATA_TYPE_IN_MEMORY_ARRAY;
+typedef unsigned int FULCRU_WORD_TYPE;
+typedef unsigned int ID_TYPE;
+typedef unsigned int LOCAL_ADDRESS_TYPE;
 #endif
 
+
+typedef uint64_t HIST_ELEM_TYPE;
+typedef uint32_t KEY_TYPE;
+
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef int64_t i64;
+
+//typedef u32		HIST_COUNT_TYPE;
+//
+//typedef struct {
+//	HIST_COUNT_TYPE cnt = 0;
+//	HIST_COUNT_TYPE used = 0;
+//} Histogram;
 
 //----------------------------------------------
 
@@ -52,11 +72,11 @@ template <typename T1, typename T2> T2 castNoLoss(T1 tmpUnsign){
 	memcpy(&newT, &tmpUnsign, sizeof(T2));
 	return newT;
 };
-//int castNoLoss(float);
 
-
-
-
+typedef struct{
+	KEY_TYPE key;
+	LOCAL_ADDRESS_TYPE offset;		//address within subarray
+} PlacementPacket;
 
 
 #endif
